@@ -1,0 +1,178 @@
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #f4f6f8;
+  color: #1f2328;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-sider {
+  background: #1f2a2e !important;
+}
+
+.brand {
+  height: 64px;
+  padding: 12px 18px;
+  color: #ffffff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.brand-title {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 22px;
+  white-space: normal;
+}
+
+.brand-subtitle {
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 12px;
+}
+
+.app-header {
+  height: 64px;
+  padding: 0 24px;
+  background: #ffffff;
+  border-bottom: 1px solid #e6e8eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.header-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2328;
+}
+
+.header-subtitle {
+  font-size: 12px;
+  color: #667085;
+}
+
+.app-content {
+  padding: 20px;
+}
+
+.page-section {
+  margin-bottom: 16px;
+}
+
+.metric-grid {
+  margin-bottom: 16px;
+}
+
+.metric-card .ant-card-body {
+  min-height: 128px;
+}
+
+.metric-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #667085;
+  font-size: 13px;
+}
+
+.metric-value {
+  margin-top: 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.metric-number {
+  font-size: 26px;
+  line-height: 34px;
+  font-weight: 750;
+  color: #1f2328;
+}
+
+.metric-unit {
+  color: #667085;
+}
+
+.metric-footer {
+  margin-top: 8px;
+  color: #667085;
+  font-size: 12px;
+}
+
+.toolbar {
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.chart-box {
+  width: 100%;
+  height: 360px;
+}
+
+.report-content {
+  white-space: pre-wrap;
+  line-height: 1.9;
+  font-size: 15px;
+  color: #252a31;
+}
+
+.principle-text {
+  margin-bottom: 0 !important;
+  line-height: 1.85;
+  color: #252a31;
+}
+
+.table-compact .ant-table-cell {
+  vertical-align: top;
+}
+
+.entry-tabs {
+  padding: 18px;
+  background: #ffffff;
+  border-radius: 6px;
+}
+
+.entry-tabs .ant-tabs-nav {
+  margin-bottom: 18px;
+}
+
+.full-width {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .app-sider {
+    display: none;
+  }
+
+  .app-header {
+    height: auto;
+    min-height: 64px;
+    padding: 12px 16px;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .app-content {
+    padding: 14px;
+  }
+
+  .metric-number {
+    font-size: 22px;
+  }
+}

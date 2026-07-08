@@ -1,0 +1,30 @@
+# Dependencies
+frontend/node_modules/
+backend/venv/
+venv/
+backend/package-lock.json
+
+# Build outputs and caches
+frontend/dist/
+*.tsbuildinfo
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Local runtime data
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
