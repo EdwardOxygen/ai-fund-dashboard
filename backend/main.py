@@ -1,7 +1,11 @@
+import os
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from data.seed_data import seed_database
@@ -35,13 +39,29 @@ app = FastAPI(
     version="0.1.0",
 )
 
+default_cors_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+extra_cors_origins = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=default_cors_origins + extra_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+FRONTEND_DIST = Path(
+    os.getenv("FRONTEND_DIST", Path(__file__).resolve().parent.parent / "frontend" / "dist")
+)
+FRONTEND_INDEX = FRONTEND_DIST / "index.html"
+FRONTEND_ASSETS = FRONTEND_DIST / "assets"
+
+if FRONTEND_ASSETS.exists():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS), name="assets")
 
 
 @app.on_event("startup")
@@ -55,7 +75,7 @@ def on_startup() -> None:
         db.close()
 
 
-@app.get("/")
+@app.get("/api/health")
 def health_check() -> dict:
     return {"status": "ok", "system": "AI资金驾驶舱"}
 
@@ -281,3 +301,25 @@ def recalculate(db: Session = Depends(get_db)) -> RecalculateOut:
         message="已完成回款可信度、付款优先级和未来90天现金流预测重算。",
         forecast_days=len(forecasts),
     )
+
+
+@app.get("/", include_in_schema=False)
+def serve_frontend_root():
+    if FRONTEND_INDEX.exists():
+        return FileResponse(FRONTEND_INDEX)
+    return health_check()
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+def serve_frontend(full_path: str):
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    requested_file = FRONTEND_DIST / full_path
+    if requested_file.is_file():
+        return FileResponse(requested_file)
+
+    if FRONTEND_INDEX.exists():
+        return FileResponse(FRONTEND_INDEX)
+
+    raise HTTPException(status_code=404, detail="Not Found")
