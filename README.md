@@ -59,6 +59,10 @@ frontend/src/components/Chart.tsx：按需注册图表组件，减少图表体�
 - 多约束项目现金流优化研究：https://pubsonline.informs.org/doi/10.1287/mnsc.47.12.1654.10242
 以上作为方法参考，不代表直接复现论文算法或已经过真实企业数据实证验证。
 
+## 外部AI保留与隐藏
+
+按用户要求保留外部AI调用路径与旧后端实现，不删除接口。EXTERNAL_AI_ENABLED 在 frontend/src/config/features.ts 中默认为 false；入口、配置状态与相关提示隐藏，前端禁止发起外部AI请求。未来仅在用户明确要求后再打开，同时完成认证和服务端接入。
+
 ## 发布
 
 仓库： https://github.com/EdwardOxygen/ai-fund-dashboard

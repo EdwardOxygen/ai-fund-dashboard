@@ -32,3 +32,8 @@ test('公开报告接口不开放外部调用，状态无密钥',()=>{
  status({method:'GET'},res);assert.equal(res.code,200);assert.equal(res.body.minimax_configured,false);
  report({method:'POST',body:{}},res);assert.equal(res.code,503);
 });
+
+test('隐藏外部AI时不产生网络请求，external请求仍返回本地报告',async()=>{
+ let calls=0;const original=global.fetch;global.fetch=async()=>{calls++;throw Error('不应请求网络');};
+ try {const report=await api.getAiReport('external');const status=await api.getAiProviderStatus();assert.equal(report.report_source,'local');assert.equal(status.provider,'local');assert.equal(calls,0);} finally {global.fetch=original;}
+});

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Card, Col, Descriptions, Row, Space, Spin, Tag, Typography } from "antd";
 import { CloudOutlined, FileTextOutlined } from "@ant-design/icons";
 import { api, AiProviderStatus, AiReport as AiReportData, formatWan } from "../api";
+import { EXTERNAL_AI_ENABLED } from "../config/features";
 import RiskCard from "../components/RiskCard";
 import PageHeader from "../components/PageHeader";
 
@@ -58,20 +59,20 @@ export default function AiReport() {
   return (
     <>
       <PageHeader
-        title="AI资金风险分析报告"
-        description="正式财务汇报口径，覆盖资金缺口、付款建议、催收项目和管理建议。"
+        title="资金分析报告"
+        description="由本地计算引擎生成，汇总资金缺口、付款关注事项、压力情景与催收建议。业务数据不发送到外部模型。"
         actions={<>
           <Button icon={<FileTextOutlined />} onClick={() => load("local")} loading={loading}>
             本地规则报告
           </Button>
-          <Button type="primary" icon={<CloudOutlined />} onClick={generateExternalReport} loading={externalLoading} disabled={!providerStatus?.minimax_configured}>
+          {EXTERNAL_AI_ENABLED ? <Button type="primary" icon={<CloudOutlined />} onClick={generateExternalReport} loading={externalLoading} disabled={!providerStatus?.minimax_configured}>
             外部 AI 生成
-          </Button>
+          </Button> : null}
         </>}
       />
       {error ? <Alert type="error" showIcon message={error} className="page-section" /> : null}
 
-      <Card
+      {EXTERNAL_AI_ENABLED ? <Card
         variant="borderless"
         title="AI能力与运行环境"
         className="page-section"
@@ -98,7 +99,7 @@ export default function AiReport() {
         <Typography.Paragraph type="secondary" className="config-note">
           当前公开演示版使用本地规则报告，不上传业务数据，也不开放付费模型接口。外部大模型接入需完成访问认证与服务端配置。
         </Typography.Paragraph>
-      </Card>
+      </Card> : <Alert className="page-section" type="info" showIcon message="本地引擎分析" description="报告来自当前业务数据、合同收支规则与确定性压力情景，不调用外部AI接口。建议仅供复核和调度讨论，实际付款须履行审批。" />}
 
       {data ? (
         <>
@@ -124,12 +125,11 @@ export default function AiReport() {
                 <Tag color={data.report_source === "external" ? "green" : "blue"}>
                   {data.report_source === "external" ? "外部AI" : "本地规则"}
                 </Tag>
-                <Tag>{data.provider}</Tag>
-                <Tag>{data.model}</Tag>
+                {EXTERNAL_AI_ENABLED ? <><Tag>{data.provider}</Tag><Tag>{data.model}</Tag></> : <Tag>可追溯 · 可复核</Tag>}
               </Space>
             }
           >
-            {providerStatus ? (
+            {EXTERNAL_AI_ENABLED && providerStatus ? (
               <Alert
                 type={providerStatus.minimax_configured ? "success" : "info"}
                 showIcon
@@ -142,7 +142,7 @@ export default function AiReport() {
                 className="page-section"
               />
             ) : null}
-            {data.fallback_reason ? (
+            {EXTERNAL_AI_ENABLED && data.fallback_reason ? (
               <Alert
                 type="warning"
                 showIcon

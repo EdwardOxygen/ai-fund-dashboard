@@ -8,6 +8,7 @@ import {
   FundProjectionScreenOutlined
 } from "@ant-design/icons";
 import { api, PREDICTION_RULES } from "../api";
+import { EXTERNAL_AI_ENABLED } from "../config/features";
 import PageHeader from "../components/PageHeader";
 
 const principleSections = [
@@ -42,10 +43,11 @@ const principleSections = [
       "现金流预测以当前可用资金为起点，按日滚动生成未来 90 天余额。回款由合同节点、审核天数、账期、分期及质保金组成；全部未付义务全额纳入。对比合同基准、回款延迟、施工承压、组合压力四类确定性情景，不使用蒙特卡洛。一般资金余额低于安全线标记红色，接近安全线标记黄色，刚性支出无法覆盖时标记重大风险。"
   },
   {
-    title: "六、AI报告生成",
-    tags: ["本地规则", "MiniMax", "外部API", "回退机制"],
+    title: "六、本地引擎报告",
+    tags: ["本地计算", "规则报告", "数据不外传", "可复核"],
     body:
-      "报告默认由本地规则模板生成，确保无外部 API key 时系统仍可运行。点击外部AI生成时，后端会把资金指标、现金流、付款优先级、项目风险和催收重点整理成结构化上下文，优先调用 MiniMax Anthropic-compatible Messages 接口生成正式报告，也兼容 OpenAI-compatible Chat Completions。若外部调用失败，页面会展示失败原因并自动回退到本地报告。"
+      "报告由本地规则模板生成，直接引用账户余额、合同收支、缺口、项目风险和四类压力情景的计算结果。所有分析在浏览器内完成；报告不会自动执行付款，也不修改业务数据。"
+
   }
 ];
 
@@ -54,7 +56,7 @@ const dataFlow = [
   "浏览器本地规则引擎刷新 ai_probability、ai_score、suggestion",
   "现金流服务按日生成 7/30/90 天余额、资金缺口和风险等级",
   "看板、项目风险、付款优先级和报告页面读取同一套计算结果",
-  "外部AI报告仅在用户点击时消费计算结果，不直接修改业务数据"
+  "本地引擎汇总可复核报告；实际付款仍须人工审批"
 ];
 
 export default function TechnicalPrinciples() {
@@ -74,7 +76,7 @@ export default function TechnicalPrinciples() {
         actions={<Button icon={<DownloadOutlined />} onClick={handleExportRules}>导出预测数学规则</Button>}
       />
 
-      <Alert className="page-section" type="info" showIcon message="模型边界：可解释的情景推演，不等同于已训练的AI预测模型" description="付款优化使用混合整数规划，受账户用途、付款窗口、刚性期限、分期条件及资料完整性约束；最多100笔到期申请、限时求解，不承诺全局最优。未覆盖义务单列，任何方案均需人工审批。大模型仅用于文字解释，不改变计算结果。" />
+      <Alert className="page-section" type="info" showIcon message="模型边界：可解释的情景推演，不等同于已训练的AI预测模型" description="付款优化使用混合整数规划，受账户用途、付款窗口、刚性期限、分期条件及资料完整性约束；最多100笔到期申请、限时求解，不承诺全局最优。未覆盖义务单列，任何方案均需人工审批。报告由本地引擎生成，不调用外部模型。" />
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={15}>
           <Space direction="vertical" size={16} className="full-width">
@@ -111,7 +113,7 @@ export default function TechnicalPrinciples() {
               }))}
             />
           </Card>
-          <Card variant="borderless" title="唯一外部接口：AI报告" className="page-section">
+          {EXTERNAL_AI_ENABLED ? <Card variant="borderless" title="唯一外部接口：AI报告" className="page-section">
             <Typography.Paragraph>
               <code>AI_REPORT_PROVIDER=minimax</code>
             </Typography.Paragraph>
@@ -124,7 +126,7 @@ export default function TechnicalPrinciples() {
             <Typography.Paragraph>
               <code>MINIMAX_BASE_URL=https://api.minimaxi.com/anthropic</code>
             </Typography.Paragraph>
-          </Card>
+          </Card> : null}
         </Col>
       </Row>
 

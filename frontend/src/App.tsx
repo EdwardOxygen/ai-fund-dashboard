@@ -46,7 +46,7 @@ const items: MenuProps["items"] = [
   { key: "workspace", type: "group", label: "业务工作台", children: [
     { key: "/master-data/projects", icon: <ApartmentOutlined />, label: "项目主数据" },
     { key: "/entry", icon: <FormOutlined />, label: "数据填报" },
-    { key: "/report", icon: <FileTextOutlined />, label: "AI报告" }
+    { key: "/report", icon: <FileTextOutlined />, label: "资金分析报告" }
   ]},
   { key: "help", type: "group", label: "系统说明", children: [
     { key: "/principles", icon: <ReadOutlined />, label: "技术原理" }
