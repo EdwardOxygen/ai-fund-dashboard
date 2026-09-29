@@ -6,21 +6,24 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json && vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "esbuild ../tests/engine.ts --bundle --platform=node --format=cjs --outfile=../.artifacts/engine.cjs && esbuild ../tests/api-entry.ts --bundle --platform=node --format=cjs --outfile=../.artifacts/api.cjs && node --test ../tests/*.test.cjs"
   },
   "dependencies": {
     "@ant-design/icons": "^5.5.1",
     "antd": "^5.22.5",
-    "echarts": "^5.5.1",
+    "echarts": "^6.1.0",
     "echarts-for-react": "^3.0.2",
+    "javascript-lp-solver": "^0.4.24",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0"
+    "react-router-dom": "^7.18.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "esbuild": "^0.25.12",
     "typescript": "^5.6.3",
     "vite": "^6.0.1"
   }

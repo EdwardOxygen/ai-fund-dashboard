@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Card, Typography } from "antd";
+import { Alert, Card } from "antd";
 import { api, PaymentPriority as PaymentRow } from "../api";
 import PaymentTable from "../components/PaymentTable";
+import PageHeader from "../components/PageHeader";
 
 export default function PaymentPriority() {
   const [data, setData] = useState<PaymentRow[]>([]);
@@ -21,24 +22,23 @@ export default function PaymentPriority() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const initialLoad = window.setTimeout(() => void load(), 0);
     const refresh = () => void load();
     window.addEventListener("fund-dashboard-refresh", refresh);
-    return () => window.removeEventListener("fund-dashboard-refresh", refresh);
+    return () => {
+      window.clearTimeout(initialLoad);
+      window.removeEventListener("fund-dashboard-refresh", refresh);
+    };
   }, [load]);
 
   return (
     <>
-      <div className="toolbar">
-        <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            付款优先级决策
-          </Typography.Title>
-          <Typography.Text type="secondary">按AI评分从高到低排序，覆盖分包付款、农民工工资、材料款、税款和机械租赁。</Typography.Text>
-        </div>
-      </div>
+      <PageHeader
+        title="付款优先级决策"
+        description="按规则分从高到低排序，辅助识别工资、税款和履约付款的紧迫性；此清单不是可支付承诺，请在收支模拟中计算满足资金约束的付款安排。"
+      />
       {error ? <Alert type="error" showIcon message={error} className="page-section" /> : null}
-      <Card bordered={false}>
+      <Card variant="borderless">
         <PaymentTable data={data} loading={loading} />
       </Card>
     </>

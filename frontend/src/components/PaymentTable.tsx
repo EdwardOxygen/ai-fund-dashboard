@@ -1,7 +1,7 @@
 import { Progress, Space, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { PaymentPriority } from "../api";
-import { formatPercent, formatWan } from "../api";
+import { formatWan } from "../api";
 
 interface PaymentTableProps {
   data: PaymentPriority[];
@@ -50,18 +50,20 @@ export default function PaymentTable({ data, loading, compact }: PaymentTablePro
       render: (value: number) => <Progress percent={Number((value * 100).toFixed(1))} size="small" />
     },
     {
-      title: "AI评分",
+      title: "优先级规则分",
       dataIndex: "ai_score",
       width: 110,
       sorter: (a, b) => a.ai_score - b.ai_score,
       render: (value: number) => (
-        <Space>
+        <Space size={8} className="score-cell">
           <Progress
             type="circle"
             percent={value}
-            size={42}
-            strokeColor={value >= 85 ? "#c92a2a" : value >= 70 ? "#f08c00" : "#176b5b"}
+            format={() => `${value}分`}
+            size={46}
+            strokeColor={value >= 85 ? "#d65353" : value >= 70 ? "#d97706" : "#236ba7"}
           />
+          <Typography.Text type="secondary">{value >= 85 ? "紧急" : value >= 70 ? "优先" : "常规"}</Typography.Text>
         </Space>
       )
     },
@@ -90,6 +92,7 @@ export default function PaymentTable({ data, loading, compact }: PaymentTablePro
       loading={loading}
       pagination={compact ? false : { pageSize: 10 }}
       size="middle"
+      rowClassName={(record) => record.suggestion.includes("立即") ? "payment-row-urgent" : ""}
       scroll={{ x: 1160 }}
     />
   );

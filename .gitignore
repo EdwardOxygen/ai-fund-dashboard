@@ -28,3 +28,11 @@ __pycache__/
 Thumbs.db
 .idea/
 .vscode/
+
+# Deployment credentials and local verification
+.vercel/
+.artifacts/
+
+
+.vercel
+.env*

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Card, Progress, Table, Tag, Typography } from "antd";
+import { Alert, Card, Progress, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { api, ProjectRisk as ProjectRiskRow, formatWan } from "../api";
 import { riskColor } from "../components/RiskCard";
+import PageHeader from "../components/PageHeader";
 
 export default function ProjectRisk() {
   const [data, setData] = useState<ProjectRiskRow[]>([]);
@@ -22,10 +23,13 @@ export default function ProjectRisk() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const initialLoad = window.setTimeout(() => void load(), 0);
     const refresh = () => void load();
     window.addEventListener("fund-dashboard-refresh", refresh);
-    return () => window.removeEventListener("fund-dashboard-refresh", refresh);
+    return () => {
+      window.clearTimeout(initialLoad);
+      window.removeEventListener("fund-dashboard-refresh", refresh);
+    };
   }, [load]);
 
   const columns: ColumnsType<ProjectRiskRow> = [
@@ -64,16 +68,12 @@ export default function ProjectRisk() {
 
   return (
     <>
-      <div className="toolbar">
-        <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            项目风险预警
-          </Typography.Title>
-          <Typography.Text type="secondary">展示每个建筑项目的资金风险、回款风险和付款风险。</Typography.Text>
-        </div>
-      </div>
+      <PageHeader
+        title="项目风险预警"
+        description="展示每个建筑项目的资金风险、回款风险和付款风险，帮助财务与项目团队聚焦回款动作。"
+      />
       {error ? <Alert type="error" showIcon message={error} className="page-section" /> : null}
-      <Card bordered={false}>
+      <Card variant="borderless">
         <Table
           rowKey="id"
           columns={columns}

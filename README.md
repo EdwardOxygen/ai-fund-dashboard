@@ -1,120 +1,67 @@
-# AI资金驾驶舱：建筑企业资金计划预测与付款优先级决策系统
+# AI资金驾驶舱 · 重构版
 
-本项目是一个本地化 Web 原型系统，面向建筑企业财务资金管理场景，展示项目资金预测、回款可信度评分、分包付款优先级排序、资金缺口预警和 AI 风险分析报告能力。
+面向建筑业的合同收支计划、确定性情景推演和付款约束安排。当前为浏览器本地数据版，不是银行交易系统；没有训练后的机器学习模型，不将规则分称为真实概率。
 
-## 技术栈
+## 运行
 
-- 前端：React + Vite + TypeScript + Ant Design + ECharts
-- 后端：Python + FastAPI
-- 数据库：SQLite
-- 数据处理：Pandas / NumPy
-- 评分逻辑：规则模型 + 简单评分模型，后续可扩展机器学习模型或大语言模型接口
+在 frontend 目录执行 npm ci、npm test、npm run dev。生产构建：npm run build。
+需要 Node.js 22+；本次验证使用 Node.js 24。
+在线版由仓库根目录 vercel.json 构建 frontend/dist，api/ai 仅提供本地模式状态与明确的未配置响应。
 
-## 后端启动
+## 页面与设计
 
-```powershell
-cd backend
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-python data/seed_data.py
-uvicorn main:app --reload --port 8000
-```
+- 资金总览：一般可调度资金、30日安全线缺口、7日到期付款、关注项目；趋势、压力判断及行动清单。
+- 现金流预测：7/30/90天；合计余额核对与一般资金余额预警分列。
+- 收支模拟：合同基准、回款延迟、施工承压、组合压力；自定义延迟天数、材料涨幅、项目范围及安全线。
+- 合同条件：节点、审核天数、账期、分期、质保金释放日、收款账户；付款期限、可分期及最低分期金额。
+- 付款安排：混合整数规划、资金用途限制、逐笔账户分配、未覆盖义务保留、人工审批提示。
+- 项目主数据、业务填报、风险、规则报告、模型说明。
 
-接口地址：`http://127.0.0.1:8000`
+UI参考 IBM Carbon 的信息优先级与 Ant Design 的数据展示规范。深蓝导航、浅色背景、统一卡片/表格/表单、响应式移动端，不使用装饰性3D、霓虹或无意义动效。
+参考：https://carbondesignsystem.com/data-visualization/dashboards/ 与 https://ant.design/docs/spec/data-display/
 
-## 前端启动
+## 计算架构
 
-```powershell
-cd frontend
-npm install
-npm run dev
-```
+frontend/src/domain/simulation.ts：纯函数事件生成与每日滚动。
+frontend/src/domain/optimizer.ts：MILP模型，最多100笔到期申请，5秒求解上限，不承诺全局最优；展示前独立复核金额守恒与账户余额。
+frontend/src/domain/optimizer.worker.ts：隔离求解，避免阻塞界面；15秒终止保护。
+frontend/src/api/index.ts：本地存储、数据校验、评分、汇总、备份和规则报告。
+frontend/src/components/Chart.tsx：按需注册图表组件，减少图表体积。
 
-页面地址：`http://localhost:5173`
+收款金额按合同事件全额保留，规则分仅提示风险，不将概率乘以金额。未付义务全部纳入合同基准，不因评分低或资料缺失而消失。
+一般资金、工资专户、项目专户分池；未分类资金和未绑定账户的回款不纳入可调度资金。
+期末合计 = 期初合计 + 已分类账户收款 - 全部到期义务。一般资金负数表示未筹足需求，不是真实账户获准透支。
+安全线缺口 = max(0, 安全线 - 最低一般资金余额)，不是随机发生概率。
+付款优化将安全线作为软约束，账户不透支及用途为硬约束；优先高权重刚性义务，但无钱或资料不全时会显示未覆盖，不伪造可支付方案。
 
-## 数据初始化
+## 假设与边界
 
-执行后端目录下的种子脚本：
+- 初次访问为明确标记的虚构演示数据：3个账户、8个项目、12笔收款与12笔付款。
+- 工期延迟只作用于“未到节点”的普通回款；已设置的质保金独立释放，不自动平移。
+- 材料压力增幅作用于所选项目所有未支付材料类义务；不代表对已签固定价合同的真实涨价判断。
+- 日期已过但仍未到账的回款暂置首日并警告，必须由财务人员更新确认日期；不宜直接作为经营决策输入。
+- 规则评分没有经历史样本训练或校准。压力情景为用户假设，不是可信区间。
+- 没有跨设备同步、多人权限、真实审批、银行执行或模型训练。公开版不开放付费模型代理。
+- 原 backend/、Dockerfile、render.yaml 作为旧版实现保留，不参与当前Vercel部署；其中算法不是本版计算依据。生产化应另行设计数据库、权限和审计。
 
-```powershell
-cd backend
-python data/seed_data.py
-```
+## 数据迁移与安全
 
-脚本会重置并生成模拟数据：
+旧域名的本地数据不会自动跨域迁移。在旧站导出JSON备份，再在新站“数据管理 → 导入数据备份”中导入。
+导入前会确认替换，校验失败不覆盖旧数据。损坏的存储也不会被示例数据静默覆盖。
+未分类旧账户须指定资金用途；旧回款须指定收款账户。备份可能包含企业敏感信息，请自行安全保管。
+个人录入数据只在当前浏览器，不提交GitHub、不上传服务器；浏览器清理仍会丢失，需定期备份。
+.env、.env.local、.vercel 和本地测试输出均排除提交。仓库沿用原有可见性。
 
-- 3 个银行账户；
-- 8 个建筑项目；
-- 15 条预计回款；
-- 20 条待付款申请；
-- 未来 90 天现金流预测，其中前 30 天用于首页和现金流重点展示。
+## 研究依据
 
-## 页面功能
+- RICS/SCSI Cash flow forecasting：https://scsi.ie/wp-content/uploads/2020/11/cff.pdf
+- 施工现金流模糊方法研究：https://www.pp.bme.hu/ci/article/view/13402
+- 多约束项目现金流优化研究：https://pubsonline.informs.org/doi/10.1287/mnsc.47.12.1654.10242
+以上作为方法参考，不代表直接复现论文算法或已经过真实企业数据实证验证。
 
-- 首页 Dashboard：展示当前可用资金、7/30/90 日资金缺口、高风险项目、待审批付款金额、AI建议本周付款金额、资金风险等级、30 天余额趋势、付款优先级前 10 条和 AI 摘要。
-- 现金流预测：支持查看未来 7 天、30 天、90 天现金流预测表和趋势图。
-- 付款优先级：按 AI 评分展示分包付款、农民工工资、材料款、税款、机械租赁等付款申请。
-- 项目风险：展示各项目合同额、确权产值、开票金额、已回款金额、回款率、回款风险、付款风险和 AI 提示。
-- 项目主数据：维护项目名称、业主类型、合同额、确权产值、开票金额、已回款金额，支持新增、编辑和受保护删除。
-- 数据填报：支持新增或更新资金账户，新增项目、预计回款和付款申请，提交后自动重算评分和未来现金流。
-- AI报告：默认使用本地规则生成报告，也可配置 MiniMax 等外部 API 生成正式汇报文本。
-- 技术原理：单独说明系统数据链路、评分模型、现金流预测和外部 AI 接入方式。
+## 发布
 
-## 核心接口
-
-- `GET /api/dashboard/summary`
-- `GET /api/cashflow/forecast?days=7`
-- `GET /api/cashflow/forecast?days=30`
-- `GET /api/cashflow/forecast?days=90`
-- `GET /api/payments/priority`
-- `GET /api/projects/risk`
-- `GET /api/reports/ai-summary?mode=local`
-- `GET /api/reports/ai-summary?mode=external`
-- `GET /api/ai/provider-status`
-- `PUT /api/ai/provider-config`
-- `GET /api/master-data/projects`
-- `POST /api/master-data/projects`
-- `PUT /api/master-data/projects/{project_id}`
-- `DELETE /api/master-data/projects/{project_id}`
-- `GET /api/data-entry/accounts`
-- `POST /api/data-entry/accounts`
-- `PUT /api/data-entry/accounts/{account_id}`
-- `GET /api/data-entry/projects`
-- `POST /api/data-entry/projects`
-- `POST /api/data-entry/collections`
-- `POST /api/data-entry/payments`
-- `POST /api/recalculate`
-
-## 外部 AI 报告配置
-
-MiniMax 文本模型默认按 Anthropic-compatible Messages 方式接入，Base URL 为 `https://api.minimaxi.com/anthropic`，模型默认为 `MiniMax-M3`。如果需要复用 OpenAI-compatible Chat Completions，也可以把 Base URL 改为 `https://api.minimaxi.com/v1`，后端会自动识别协议。
-
-可在“AI报告”页面的“MiniMax API配置”区域输入 API Key、模型、Base URL 和超时时间。页面保存的是后端运行时配置，不会把 API Key 回显到前端，也不会写入仓库文件；后端服务重启后如需继续使用，需要重新输入。
-
-也可以通过环境变量预置：
-
-```powershell
-$env:AI_REPORT_PROVIDER="minimax"
-$env:MINIMAX_API_KEY="你的MiniMax API Key"
-$env:MINIMAX_MODEL="MiniMax-M3"
-$env:MINIMAX_BASE_URL="https://api.minimaxi.com/anthropic"
-```
-
-如未配置或调用失败，系统会自动回退到本地规则报告，并在页面展示失败原因。
-
-## 业务规则概览
-
-- 回款可信度：基于确权状态、合同付款节点、开票状态、业主类型、账龄、历史延期天数计算 `ai_probability`。
-- 付款优先级：工资、农民工工资、税款优先；劳务、材料、机械、专业分包按现场履约影响加分；逾期加分；付款比例过高、附件缺失、付款后低于安全线扣分。
-- 付款建议：输出立即支付、优先支付、部分支付、暂缓支付、退回补充资料或不建议支付。
-- 风险预警：资金余额高于安全线为绿色，接近安全线为黄色，低于安全线为红色，刚性支出无法覆盖时为重大风险。
-
-## 后续可扩展方向
-
-- 接入 ERP、资金系统、项目管理系统和电子发票数据；
-- 引入真实银行流水和业主付款历史，训练回款预测模型；
-- 引入付款审批工作流和多级权限；
-- 接入大语言模型生成资金调度建议、催收策略和付款审批意见；
-- 增加融资测算、票据池、保函保证金和项目现金流穿透分析；
-- 支持 Docker Compose、权限登录和生产环境配置。
+仓库： https://github.com/EdwardOxygen/ai-fund-dashboard
+站点： https://ai-fund-dashboard-plum.vercel.app
+CLI发布：在根目录执行 vercel deploy --prod --scope edwardoxygens-projects。
+代码推送与网站发布分别验证；Vercel的GitHub App授权/自动关联尚待完成，不能把手动发布当作push自动发布成功。

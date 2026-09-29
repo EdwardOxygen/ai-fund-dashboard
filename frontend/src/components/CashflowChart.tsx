@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import ReactECharts from "echarts-for-react";
+import ReactECharts from "./Chart";
 import type { RiskLevel } from "../api";
 
 interface CashflowChartItem {
@@ -19,61 +19,81 @@ interface CashflowChartProps {
 
 export default function CashflowChart({ data, safetyLine = 3_000_000 }: CashflowChartProps) {
   const option = useMemo(() => {
-    const dates = data.map((item) => item.date || item.forecast_date || "");
+    const dates = data.map((item) => {
+      const raw = item.date || item.forecast_date || "";
+      return raw.length >= 10 ? raw.slice(5, 10).replace("-", "/") : raw;
+    });
     const endingBalances = data.map((item) => Number((item.ending_balance / 10000).toFixed(2)));
     const collections = data.map((item) => Number(((item.expected_collection || 0) / 10000).toFixed(2)));
+    const hasMovements = data.some(d => d.expected_collection !== undefined);
     const payments = data.map((item) => Number((((item.planned_payment || 0) + (item.rigid_payment || 0)) / 10000).toFixed(2)));
 
     return {
-      color: ["#176b5b", "#2b8a3e", "#c92a2a"],
+      color: ["#236ba7", "#80b5ca", "#de8d8d"],
       tooltip: {
         trigger: "axis",
-        valueFormatter: (value: number) => `${value.toLocaleString("zh-CN")} 万`
+        backgroundColor: "rgba(11, 31, 42, .94)",
+        borderWidth: 0,
+        textStyle: { color: "#ffffff" },
+        valueFormatter: (value: number) => `${value.toLocaleString("zh-CN", { maximumFractionDigits: 2 })} 万`
       },
-      grid: { top: 36, right: 26, bottom: 44, left: 58 },
+      grid: { top: 48, right: 22, bottom: 34, left: 58 },
       legend: {
         top: 0,
-        data: ["期末余额", "预计回款", "计划支出"]
+        data: hasMovements ? ["一般资金余额", "预计回款", "计划支出"] : ["一般资金余额"],
+        icon: "roundRect",
+        itemWidth: 12,
+        itemHeight: 8,
+        textStyle: { color: "#667b83", fontSize: 12 }
       },
       xAxis: {
         type: "category",
         boundaryGap: false,
-        data: dates
+        data: dates,
+        axisLine: { lineStyle: { color: "#dce6e5" } },
+        axisTick: { show: false },
+        axisLabel: { color: "#8a9aa0", fontSize: 11, interval: "auto" }
       },
       yAxis: {
         type: "value",
         name: "万元",
-        splitLine: { lineStyle: { color: "#eef0f2" } }
+        nameTextStyle: { color: "#8a9aa0", padding: [0, 0, 4, 0] },
+        axisLabel: { color: "#8a9aa0", fontSize: 11 },
+        splitLine: { lineStyle: { color: "#edf2f1", type: "dashed" } }
       },
       series: [
         {
-          name: "期末余额",
+          name: "一般资金余额",
           type: "line",
-          smooth: true,
+          step: "end",
           symbol: "circle",
           symbolSize: 5,
           data: endingBalances,
-          areaStyle: { opacity: 0.08 },
+          lineStyle: { width: 3 },
+          itemStyle: { borderWidth: 2, borderColor: "#ffffff" },
+          areaStyle: { opacity: 0.12 },
           markLine: {
             symbol: "none",
-            label: { formatter: "安全线" },
-            lineStyle: { color: "#f08c00", type: "dashed" },
+            label: { formatter: "安全线", position: "insideEndTop", color: "#d97706", fontSize: 11 },
+            lineStyle: { color: "#d97706", type: "dashed", width: 1.5 },
             data: [{ yAxis: Number((safetyLine / 10000).toFixed(2)) }]
           }
         },
         {
           name: "预计回款",
           type: "bar",
-          barMaxWidth: 14,
+          barMaxWidth: 12,
+          itemStyle: { borderRadius: [4, 4, 0, 0] },
           data: collections
         },
         {
           name: "计划支出",
           type: "bar",
-          barMaxWidth: 14,
+          barMaxWidth: 12,
+          itemStyle: { borderRadius: [4, 4, 0, 0] },
           data: payments
         }
-      ]
+      ].filter((_, i) => i === 0 || hasMovements)
     };
   }, [data, safetyLine]);
 

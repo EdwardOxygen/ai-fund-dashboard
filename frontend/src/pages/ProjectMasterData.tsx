@@ -14,13 +14,13 @@ import {
   Space,
   Table,
   Tag,
-  Typography,
   message
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { api, ProjectMaster, ProjectPayload, formatWan } from "../api";
 import { riskColor } from "../components/RiskCard";
+import PageHeader from "../components/PageHeader";
 
 const initialValues: ProjectPayload = {
   project_name: "",
@@ -65,10 +65,13 @@ export default function ProjectMasterData() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const initialLoad = window.setTimeout(() => void load(), 0);
     const refresh = () => void load();
     window.addEventListener("fund-dashboard-refresh", refresh);
-    return () => window.removeEventListener("fund-dashboard-refresh", refresh);
+    return () => {
+      window.clearTimeout(initialLoad);
+      window.removeEventListener("fund-dashboard-refresh", refresh);
+    };
   }, [load]);
 
   function openCreateModal() {
@@ -179,19 +182,11 @@ export default function ProjectMasterData() {
   return (
     <>
       {contextHolder}
-      <div className="toolbar">
-        <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            项目主数据管理
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            统一维护项目名称、业主类型、合同额、确权产值、开票金额和已回款金额。
-          </Typography.Text>
-        </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
-          新增项目
-        </Button>
-      </div>
+      <PageHeader
+        title="项目主数据管理"
+        description="统一维护项目名称、业主类型、合同额、确权产值、开票金额和已回款金额。"
+        actions={<Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>新增项目</Button>}
+      />
 
       {error ? <Alert type="error" showIcon message={error} className="page-section" /> : null}
 
@@ -211,7 +206,7 @@ export default function ProjectMasterData() {
         onOk={() => form.submit()}
         confirmLoading={saving}
         width={860}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical" initialValues={initialValues} onFinish={submitProject}>
           <Row gutter={16}>

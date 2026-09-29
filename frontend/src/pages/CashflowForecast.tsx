@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Card, Segmented, Space, Table, Tag, Typography } from "antd";
+import { Alert, Card, Segmented, Space, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { api, CashflowForecast as ForecastRow, formatWan } from "../api";
 import CashflowChart from "../components/CashflowChart";
+import PageHeader from "../components/PageHeader";
 import { riskColor } from "../components/RiskCard";
 
 export default function CashflowForecast() {
@@ -24,10 +25,13 @@ export default function CashflowForecast() {
   }, [days]);
 
   useEffect(() => {
-    void load();
+    const initialLoad = window.setTimeout(() => void load(), 0);
     const refresh = () => void load();
     window.addEventListener("fund-dashboard-refresh", refresh);
-    return () => window.removeEventListener("fund-dashboard-refresh", refresh);
+    return () => {
+      window.clearTimeout(initialLoad);
+      window.removeEventListener("fund-dashboard-refresh", refresh);
+    };
   }, [load]);
 
   const columns: ColumnsType<ForecastRow> = [
@@ -36,7 +40,8 @@ export default function CashflowForecast() {
     { title: "预计回款", dataIndex: "expected_collection", align: "right", render: (value: number) => formatWan(value) },
     { title: "刚性支出", dataIndex: "rigid_payment", align: "right", render: (value: number) => formatWan(value) },
     { title: "计划付款", dataIndex: "planned_payment", align: "right", render: (value: number) => formatWan(value) },
-    { title: "期末余额", dataIndex: "ending_balance", align: "right", render: (value: number) => formatWan(value) },
+    { title: "期末合计余额", dataIndex: "ending_balance", align: "right", render: (value: number) => formatWan(value) },
+    { title: "其中：一般资金", dataIndex: "general_balance", align: "right", render: (value: number) => formatWan(value) },
     {
       title: "风险等级",
       dataIndex: "risk_level",
@@ -47,31 +52,27 @@ export default function CashflowForecast() {
 
   return (
     <>
-      <div className="toolbar">
-        <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            现金流预测
-          </Typography.Title>
-          <Typography.Text type="secondary">按预计回款可信度和付款优先级测算未来资金缺口。</Typography.Text>
-        </div>
-        <Segmented
+      <PageHeader
+        title="现金流预测"
+        description="按合同节点与全部未付义务滚动计算。合计余额用于收支核对，一般资金余额用于安全线预警；负数代表未筹足的资金需求。金额单位：万元。"
+        actions={<Segmented
           value={days}
           onChange={(value) => setDays(Number(value))}
           options={[
-            { label: "未来7天", value: 7 },
-            { label: "未来30天", value: 30 },
-            { label: "未来90天", value: 90 }
+            { label: "未来 7 天", value: 7 },
+            { label: "未来 30 天", value: 30 },
+            { label: "未来 90 天", value: 90 }
           ]}
-        />
-      </div>
+        />}
+      />
 
       {error ? <Alert type="error" showIcon message={error} className="page-section" /> : null}
 
-      <Card bordered={false} className="page-section" title={`未来${days}天资金余额趋势`}>
-        <CashflowChart data={data} />
+      <Card variant="borderless" className="page-section" title={`未来${days}天资金余额趋势`}>
+        <CashflowChart data={data.map(d => ({ ...d, ending_balance: d.general_balance }))} />
       </Card>
 
-      <Card bordered={false} title={`未来${days}天现金流预测表`}>
+      <Card variant="borderless" title={`未来${days}天现金流预测表`}>
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <Table
             rowKey="id"

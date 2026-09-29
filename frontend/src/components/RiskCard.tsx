@@ -9,6 +9,7 @@ interface RiskCardProps {
   riskLevel?: RiskLevel;
   icon?: ReactNode;
   footer?: string;
+  tone?: "default" | "teal" | "amber" | "red";
 }
 
 export function riskColor(level?: string): string {
@@ -19,12 +20,12 @@ export function riskColor(level?: string): string {
   return "default";
 }
 
-export default function RiskCard({ title, value, unit, riskLevel, icon, footer }: RiskCardProps) {
+export default function RiskCard({ title, value, unit, riskLevel, icon, footer, tone = "default" }: RiskCardProps) {
   return (
-    <Card className="metric-card" bordered={false}>
+    <Card className={`metric-card metric-card-${tone}`} variant="borderless">
       <div className="metric-title">
         <span>{title}</span>
-        {riskLevel ? <Tag color={riskColor(riskLevel)}>{riskLevel}</Tag> : icon}
+        {riskLevel ? <Tag color={riskColor(riskLevel)}>{riskLevel}</Tag> : <span className="metric-icon">{icon}</span>}
       </div>
       <div className="metric-value">
         <span className="metric-number">{value}</span>

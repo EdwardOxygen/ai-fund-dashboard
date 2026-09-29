@@ -1,22 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Card, Col, Form, Input, InputNumber, Row, Space, Spin, Tag, Typography, message } from "antd";
-import { CloudOutlined, FileTextOutlined, SaveOutlined } from "@ant-design/icons";
-import { api, AiProviderConfigPayload, AiProviderStatus, AiReport as AiReportData, formatWan } from "../api";
+import { Alert, Button, Card, Col, Descriptions, Row, Space, Spin, Tag, Typography } from "antd";
+import { CloudOutlined, FileTextOutlined } from "@ant-design/icons";
+import { api, AiProviderStatus, AiReport as AiReportData, formatWan } from "../api";
 import RiskCard from "../components/RiskCard";
-
-type AiProviderFormValues = AiProviderConfigPayload & {
-  api_key?: string;
-};
+import PageHeader from "../components/PageHeader";
 
 export default function AiReport() {
   const [data, setData] = useState<AiReportData | null>(null);
   const [providerStatus, setProviderStatus] = useState<AiProviderStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [externalLoading, setExternalLoading] = useState(false);
-  const [savingConfig, setSavingConfig] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [messageApi, contextHolder] = message.useMessage();
-  const [configForm] = Form.useForm<AiProviderFormValues>();
 
   const load = useCallback(async (mode: "local" | "external" | "auto" = "auto") => {
     setLoading(true);
@@ -28,19 +22,12 @@ export default function AiReport() {
       ]);
       setData(report);
       setProviderStatus(status);
-      configForm.setFieldsValue({
-        provider: "minimax",
-        api_key: "",
-        base_url: status.minimax_base_url,
-        model: status.minimax_model,
-        timeout_seconds: 30
-      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败");
     } finally {
       setLoading(false);
     }
-  }, [configForm]);
+  }, []);
 
   async function generateExternalReport() {
     setExternalLoading(true);
@@ -54,33 +41,14 @@ export default function AiReport() {
     }
   }
 
-  async function saveMinimaxConfig(values: AiProviderFormValues) {
-    setSavingConfig(true);
-    setError(null);
-    try {
-      const apiKey = values.api_key?.trim();
-      const status = await api.updateAiProviderConfig({
-        provider: "minimax",
-        ...(apiKey ? { api_key: apiKey } : {}),
-        base_url: values.base_url,
-        model: values.model,
-        timeout_seconds: values.timeout_seconds
-      });
-      setProviderStatus(status);
-      configForm.setFieldValue("api_key", "");
-      messageApi.success("MiniMax API配置已保存");
-    } catch (err) {
-      messageApi.error(err instanceof Error ? err.message : "保存失败");
-    } finally {
-      setSavingConfig(false);
-    }
-  }
-
   useEffect(() => {
-    void load();
+    const initialLoad = window.setTimeout(() => void load(), 0);
     const refresh = () => void load();
     window.addEventListener("fund-dashboard-refresh", refresh);
-    return () => window.removeEventListener("fund-dashboard-refresh", refresh);
+    return () => {
+      window.clearTimeout(initialLoad);
+      window.removeEventListener("fund-dashboard-refresh", refresh);
+    };
   }, [load]);
 
   if (loading && !data) {
@@ -89,28 +57,23 @@ export default function AiReport() {
 
   return (
     <>
-      {contextHolder}
-      <div className="toolbar">
-        <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            AI资金风险分析报告
-          </Typography.Title>
-          <Typography.Text type="secondary">正式财务汇报口径，覆盖资金缺口、付款建议、催收项目和管理建议。</Typography.Text>
-        </div>
-        <Space wrap>
+      <PageHeader
+        title="AI资金风险分析报告"
+        description="正式财务汇报口径，覆盖资金缺口、付款建议、催收项目和管理建议。"
+        actions={<>
           <Button icon={<FileTextOutlined />} onClick={() => load("local")} loading={loading}>
             本地规则报告
           </Button>
-          <Button type="primary" icon={<CloudOutlined />} onClick={generateExternalReport} loading={externalLoading}>
-            外部AI生成
+          <Button type="primary" icon={<CloudOutlined />} onClick={generateExternalReport} loading={externalLoading} disabled={!providerStatus?.minimax_configured}>
+            外部 AI 生成
           </Button>
-        </Space>
-      </div>
+        </>}
+      />
       {error ? <Alert type="error" showIcon message={error} className="page-section" /> : null}
 
       <Card
-        bordered={false}
-        title="MiniMax API配置"
+        variant="borderless"
+        title="AI能力与运行环境"
         className="page-section"
         extra={
           providerStatus ? (
@@ -123,48 +86,18 @@ export default function AiReport() {
           ) : null
         }
       >
-        <Form
-          form={configForm}
-          layout="vertical"
-          initialValues={{
-            provider: "minimax",
-            api_key: "",
-            base_url: "https://api.minimaxi.com/anthropic",
-            model: "MiniMax-M3",
-            timeout_seconds: 30
-          }}
-          onFinish={saveMinimaxConfig}
-        >
-          <Row gutter={16}>
-            <Col xs={24} lg={8}>
-              <Form.Item label="API Key" name="api_key">
-                <Input.Password placeholder="MINIMAX_API_KEY" autoComplete="off" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12} lg={6}>
-              <Form.Item label="Base URL" name="base_url" rules={[{ required: true, message: "请输入 Base URL" }]}>
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12} lg={5}>
-              <Form.Item label="模型" name="model" rules={[{ required: true, message: "请输入模型名称" }]}>
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12} lg={3}>
-              <Form.Item label="超时" name="timeout_seconds" rules={[{ required: true, message: "请输入超时秒数" }]}>
-                <InputNumber min={5} max={120} precision={0} addonAfter="秒" className="full-width" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12} lg={2}>
-              <Form.Item label=" " colon={false}>
-                <Button type="primary" icon={<SaveOutlined />} htmlType="submit" loading={savingConfig} block>
-                  保存
-                </Button>
-              </Form.Item>
-            </Col>
-          </Row>
-        </Form>
+        <Descriptions
+          column={{ xs: 1, sm: 2, lg: 4 }}
+          items={[
+            { key: "provider", label: "当前提供方", children: providerStatus?.provider || "local" },
+            { key: "model", label: "模型", children: providerStatus?.minimax_model || "rule-template" },
+            { key: "protocol", label: "协议", children: providerStatus?.minimax_protocol === "anthropic" ? "Anthropic 兼容" : "OpenAI 兼容" },
+            { key: "status", label: "运行状态", children: providerStatus?.minimax_configured ? "已配置外部模型" : "本地规则模式" }
+          ]}
+        />
+        <Typography.Paragraph type="secondary" className="config-note">
+          当前公开演示版使用本地规则报告，不上传业务数据，也不开放付费模型接口。外部大模型接入需完成访问认证与服务端配置。
+        </Typography.Paragraph>
       </Card>
 
       {data ? (
@@ -184,7 +117,7 @@ export default function AiReport() {
             </Col>
           </Row>
           <Card
-            bordered={false}
+            variant="borderless"
             title={`生成时间：${data.generated_at}`}
             extra={
               <Space wrap>
@@ -203,9 +136,9 @@ export default function AiReport() {
                 message={
                   providerStatus.minimax_configured
                     ? `MiniMax 已配置：${providerStatus.minimax_model}`
-                    : "MiniMax 未配置：设置 MINIMAX_API_KEY 后可使用外部AI生成"
+                    : "当前为本地报告模式：计算结果真实可复核，文字由规则模板生成"
                 }
-                description={`当前 provider=${providerStatus.provider}，protocol=${providerStatus.minimax_protocol}，base_url=${providerStatus.minimax_base_url}`}
+                description="不把规则报告标为真实大模型生成。生产接入后方可启用外部AI。"
                 className="page-section"
               />
             ) : null}

@@ -11,7 +11,6 @@ import {
   Space,
   Switch,
   Tabs,
-  Typography,
   message
 } from "antd";
 import { SaveOutlined } from "@ant-design/icons";
@@ -24,6 +23,7 @@ import {
   Project,
   ProjectPayload
 } from "../api";
+import PageHeader from "../components/PageHeader";
 
 type AccountFormValues = BankAccountPayload & {
   account_id: "new" | number;
@@ -35,7 +35,8 @@ type PaymentFormValues = PaymentRequestPayload;
 
 const accountInitialValues: Partial<AccountFormValues> = {
   account_id: "new",
-  frozen_amount: 0
+  frozen_amount: 0,
+  scope: "unassigned"
 };
 
 const projectInitialValues: Partial<ProjectFormValues> = {
@@ -97,10 +98,13 @@ export default function DataEntry() {
   }, []);
 
   useEffect(() => {
-    void loadOptions();
+    const initialLoad = window.setTimeout(() => void loadOptions(), 0);
     const refresh = () => void loadOptions();
     window.addEventListener("fund-dashboard-refresh", refresh);
-    return () => window.removeEventListener("fund-dashboard-refresh", refresh);
+    return () => {
+      window.clearTimeout(initialLoad);
+      window.removeEventListener("fund-dashboard-refresh", refresh);
+    };
   }, [loadOptions]);
 
   function finishWrite(messageText: string) {
@@ -128,7 +132,9 @@ export default function DataEntry() {
       bank_name: account.bank_name,
       balance: account.balance,
       available_balance: account.available_balance,
-      frozen_amount: account.frozen_amount
+      frozen_amount: account.frozen_amount,
+      scope: account.scope || "unassigned",
+      project_id: account.project_id
     });
   }
 
@@ -140,7 +146,9 @@ export default function DataEntry() {
         bank_name: values.bank_name,
         balance: toMoney(values.balance),
         available_balance: toMoney(values.available_balance),
-        frozen_amount: toMoney(values.frozen_amount)
+        frozen_amount: toMoney(values.frozen_amount),
+        scope: values.scope,
+        project_id: values.project_id
       };
       if (values.account_id === "new") {
         await api.createBankAccount(payload);
@@ -229,16 +237,10 @@ export default function DataEntry() {
   return (
     <>
       {contextHolder}
-      <div className="toolbar">
-        <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            数据填报
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            录入资金账户、项目、预计回款和付款申请，提交后自动刷新评分、预测和风险看板。
-          </Typography.Text>
-        </div>
-      </div>
+      <PageHeader
+        title="数据填报"
+        description="录入真实资金账户、项目、预计回款和付款申请；评分与预测在本机完成，提交后自动刷新看板。建议定期导出备份。"
+      />
 
       {error ? <Alert type="error" showIcon message={error} className="page-section" /> : null}
 
@@ -269,6 +271,16 @@ export default function DataEntry() {
                           }))
                         ]}
                       />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={12} xl={8}>
+                    <Form.Item label="账户用途" name="scope" rules={[{ required: true }]}>
+                      <Select options={[{value:"general",label:"一般资金"},{value:"payroll",label:"工资专户"},{value:"project",label:"项目专户"},{value:"unassigned",label:"用途待确认（暂不参与调度）"}]} />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={12} xl={8}>
+                    <Form.Item label="专户绑定项目（项目专户必选）" name="project_id">
+                      <Select allowClear options={projectOptions} />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={12} xl={8}>
@@ -385,11 +397,14 @@ export default function DataEntry() {
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={12} lg={6}>
-                    <Form.Item label="预计回款金额" name="amount" rules={[{ required: true, message: "请输入金额" }]}>
+                    <Form.Item label="尚未到账的回款金额" name="amount" rules={[{ required: true, message: "请输入金额" }]}>
                       <InputNumber min={0.01} precision={2} addonAfter="元" className="full-width" />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={12} lg={6}>
+                    <Form.Item label="收款账户" name="receipt_account_id" rules={[{ required: true, message: "请选择收款账户" }]}>
+                      <Select options={accounts.map(a => ({value:a.id,label:a.account_name}))} />
+                    </Form.Item>
                     <Form.Item label="回款阶段" name="collection_stage" rules={[{ required: true, message: "请选择回款阶段" }]}>
                       <Select
                         options={[
@@ -477,7 +492,7 @@ export default function DataEntry() {
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={12} lg={6}>
-                    <Form.Item label="申请付款金额" name="amount" rules={[{ required: true, message: "请输入金额" }]}>
+                    <Form.Item label="本次尚未支付的申请金额" name="amount" rules={[{ required: true, message: "请输入金额" }]}>
                       <InputNumber min={0.01} precision={2} addonAfter="元" className="full-width" />
                     </Form.Item>
                   </Col>

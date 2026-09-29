@@ -1,11 +1,14 @@
-import { Card, Col, Row, Space, Tag, Timeline, Typography } from "antd";
+import { Alert, Button, Card, Col, Row, Space, Tag, Timeline, Typography, message } from "antd";
 import {
   ApiOutlined,
   CalculatorOutlined,
   DatabaseOutlined,
+  DownloadOutlined,
   FileSearchOutlined,
   FundProjectionScreenOutlined
 } from "@ant-design/icons";
+import { api, PREDICTION_RULES } from "../api";
+import PageHeader from "../components/PageHeader";
 
 const principleSections = [
   {
@@ -24,7 +27,7 @@ const principleSections = [
     title: "三、回款可信度评分",
     tags: ["付款节点", "开票状态", "账龄", "历史延期"],
     body:
-      "预计回款按规则模型计算 ai_probability。加分因素包括已确权、付款节点已达成、已开票；扣分因素包括未到节点、未开票、账龄偏长和历史延期。评分结果会折算现金流中的风险调整回款金额，并参与项目回款风险判断。"
+      "预计回款按规则模型计算 ai_probability。加分因素包括已确权、付款节点已达成、已开票；扣分因素包括未到节点、未开票、账龄偏长和历史延期。评分仅辅助判断催收关注程度，未经历史样本校准，不表示真实概率，也不折减合同现金流。"
   },
   {
     title: "四、付款优先级评分",
@@ -36,7 +39,7 @@ const principleSections = [
     title: "五、现金流预测",
     tags: ["90天滚动", "安全线", "刚性支付", "资金缺口"],
     body:
-      "现金流预测以当前可用资金为起点，按日滚动生成未来 90 天余额。预计回款按可信度折算；刚性付款全额纳入；立即支付和优先支付纳入计划付款；部分支付按 50% 纳入。期末余额低于安全线标记红色，接近安全线标记黄色，刚性支出无法覆盖时标记重大风险。"
+      "现金流预测以当前可用资金为起点，按日滚动生成未来 90 天余额。回款由合同节点、审核天数、账期、分期及质保金组成；全部未付义务全额纳入。对比合同基准、回款延迟、施工承压、组合压力四类确定性情景，不使用蒙特卡洛。一般资金余额低于安全线标记红色，接近安全线标记黄色，刚性支出无法覆盖时标记重大风险。"
   },
   {
     title: "六、AI报告生成",
@@ -47,34 +50,38 @@ const principleSections = [
 ];
 
 const dataFlow = [
-  "项目主数据、账户余额、预计回款、付款申请进入 SQLite 数据库",
-  "回款评分和付款评分服务刷新 ai_probability、ai_score、suggestion",
+  "财务人员手动录入账户、项目、预计回款和付款申请",
+  "浏览器本地规则引擎刷新 ai_probability、ai_score、suggestion",
   "现金流服务按日生成 7/30/90 天余额、资金缺口和风险等级",
   "看板、项目风险、付款优先级和报告页面读取同一套计算结果",
-  "外部AI报告只消费计算后的结构化上下文，不直接修改业务数据"
+  "外部AI报告仅在用户点击时消费计算结果，不直接修改业务数据"
 ];
 
 export default function TechnicalPrinciples() {
+  const [messageApi, contextHolder] = message.useMessage();
+
+  function handleExportRules() {
+    api.exportPredictionRules();
+    messageApi.success("预测数学规则文件已生成");
+  }
+
   return (
     <>
-      <div className="toolbar">
-        <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            技术原理说明
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            这页内容集中维护在 <code>frontend/src/pages/TechnicalPrinciples.tsx</code>，后续可直接修改文案和章节。
-          </Typography.Text>
-        </div>
-      </div>
+      {contextHolder}
+      <PageHeader
+        title="技术原理说明"
+        description="展示系统的数据链路、评分逻辑、现金流预测与人工落地方式；可导出当前站点实际执行的数学规则。"
+        actions={<Button icon={<DownloadOutlined />} onClick={handleExportRules}>导出预测数学规则</Button>}
+      />
 
+      <Alert className="page-section" type="info" showIcon message="模型边界：可解释的情景推演，不等同于已训练的AI预测模型" description="付款优化使用混合整数规划，受账户用途、付款窗口、刚性期限、分期条件及资料完整性约束；最多100笔到期申请、限时求解，不承诺全局最优。未覆盖义务单列，任何方案均需人工审批。大模型仅用于文字解释，不改变计算结果。" />
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={15}>
           <Space direction="vertical" size={16} className="full-width">
             {principleSections.map((section, index) => (
               <Card
                 key={section.title}
-                bordered={false}
+                variant="borderless"
                 title={
                   <Space>
                     {index === 0 ? <DatabaseOutlined /> : null}
@@ -96,7 +103,7 @@ export default function TechnicalPrinciples() {
           </Space>
         </Col>
         <Col xs={24} xl={9}>
-          <Card bordered={false} title="数据处理链路">
+          <Card variant="borderless" title="数据处理链路">
             <Timeline
               items={dataFlow.map((item, index) => ({
                 dot: index === dataFlow.length - 1 ? <FileSearchOutlined /> : undefined,
@@ -104,15 +111,15 @@ export default function TechnicalPrinciples() {
               }))}
             />
           </Card>
-          <Card bordered={false} title="外部AI环境变量" className="page-section">
+          <Card variant="borderless" title="唯一外部接口：AI报告" className="page-section">
             <Typography.Paragraph>
               <code>AI_REPORT_PROVIDER=minimax</code>
             </Typography.Paragraph>
             <Typography.Paragraph>
-              <code>MINIMAX_API_KEY=你的MiniMax Key</code>
+              <code>默认使用本地报告。公开演示站不开放付费模型调用；生产接入需独立认证和服务端密钥。</code>
             </Typography.Paragraph>
             <Typography.Paragraph>
-              <code>MINIMAX_MODEL=MiniMax-M3</code>
+              <code>外部模型以服务器实际配置为准</code>
             </Typography.Paragraph>
             <Typography.Paragraph>
               <code>MINIMAX_BASE_URL=https://api.minimaxi.com/anthropic</code>
@@ -120,6 +127,39 @@ export default function TechnicalPrinciples() {
           </Card>
         </Col>
       </Row>
+
+      <Card
+        variant="borderless"
+        className="page-section"
+        title="预测数学规则（当前实际执行版本）"
+        extra={<Tag color="blue">本地规则引擎</Tag>}
+      >
+        <Alert
+          type="info"
+          showIcon
+          message="公式、加减分和阈值与当前浏览器端计算代码保持一致"
+          description="可点击页面右上角或本卡片上方的“导出预测数学规则”，下载 Markdown 版规则文件，用于财务复核、制度说明和后续模型迭代。"
+          className="page-section"
+        />
+        <Row gutter={[16, 16]}>
+          {PREDICTION_RULES.map((section) => (
+            <Col xs={24} lg={12} key={section.title}>
+              <Card size="small" title={section.title} className="rule-card">
+                <Typography.Text strong>核心公式</Typography.Text>
+                <div className="formula-block">{section.formula}</div>
+                <Typography.Text strong>变量说明</Typography.Text>
+                <ul className="rule-list">
+                  {section.variables.map((item) => <li key={item}>{item}</li>)}
+                </ul>
+                <Typography.Text strong>执行规则</Typography.Text>
+                <ul className="rule-list">
+                  {section.rules.map((item) => <li key={item}>{item}</li>)}
+                </ul>
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      </Card>
     </>
   );
 }
