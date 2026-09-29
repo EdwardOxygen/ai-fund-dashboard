@@ -41,6 +41,7 @@ export interface ProjectPlan {
   opening_output: number;
   received_to_date: number;
   opening_receivable_date?: string;
+  opening_receivable_due_date?: string;
   receipt_account_id?: number;
   payment_days: number;
   progress_ratio: number;
@@ -59,6 +60,7 @@ export interface ProjectPlan {
   subcontracts: SubcontractPlan[];
 }
 export interface PlannedCash {
+  aging_days?: number;
   date: string;
   amount: number;
   name: string;
@@ -72,6 +74,36 @@ export interface ProjectSchedule {
   warnings: string[];
 }
 const money = (n: number) => Math.round(n * 100) / 100;
+/** Historical progress entitlement, not the entire uncompleted contract. */
+export function projectReceiptStatus(contract: number, plan: ProjectPlan) {
+  const expected = money(
+    Math.min(
+      contract,
+      (plan.opening_output * plan.progress_ratio) / 100 +
+        plan.advance_received -
+        plan.advance_recovered,
+    ),
+  );
+  const outstanding = money(Math.max(0, expected - plan.received_to_date));
+  const overdueDays =
+    outstanding > 0 && plan.opening_receivable_due_date
+      ? Math.max(
+          0,
+          Math.floor(
+            (Date.parse(plan.as_of) -
+              Date.parse(plan.opening_receivable_due_date)) /
+              86400000,
+          ),
+        )
+      : 0;
+  return {
+    expected,
+    outstanding,
+    overdueDays,
+    overdueAmount: overdueDays > 0 ? outstanding : 0,
+    rate: expected > 0 ? Math.min(1, plan.received_to_date / expected) : 1,
+  };
+}
 export function shiftDate(date: string, days: number) {
   const d = new Date(`${date}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
@@ -226,6 +258,13 @@ export function validateProjectPlan(plan: ProjectPlan, contract: number) {
       plan.opening_receivable_date < plan.as_of)
   )
     throw new Error("期初待收进度款到账日须不早于基准日");
+  if (
+    plan.opening_receivable_due_date &&
+    (!validDate(plan.opening_receivable_due_date) ||
+      plan.opening_receivable_due_date >
+        (plan.opening_receivable_date || plan.as_of))
+  )
+    throw new Error("期初待收进度款合同应收日须为有效日期且不晚于预计到账日");
   if (plan.opening_output > contract || plan.received_to_date > contract)
     throw new Error("期初产值及累计已收不得超过合同额");
   if (
@@ -424,20 +463,16 @@ export function buildProjectSchedule(
     }
     return amount;
   };
-  const arrears = money(
-    Math.max(
-      0,
-      Math.min(contract, (output * p.progress_ratio) / 100 + advance) -
-        received,
-    ),
-  );
+  const status = projectReceiptStatus(contract, p);
+  const arrears = status.outstanding;
   if (arrears > 0) {
     receipt(
       p.opening_receivable_date || p.as_of,
       arrears,
-      "期初进度款待收",
-      "期初累计产值×进度比例＋未扣预付款－累计已收；按设置的期初待收到账日",
+      status.overdueDays > 0 ? "期初逾期进度款待收" : "期初进度款待收",
+      `期初累计产值×进度比例＋未扣预付款－累计已收；${status.overdueDays > 0 ? `合同应收日${p.opening_receivable_due_date}，截至基准日逾期${status.overdueDays}天；` : ""}按设置的期初待收到账日，预计补收不等于已经到账`,
     );
+    receipts[receipts.length - 1].aging_days = status.overdueDays;
     warnings.push(
       `期初进度待收${arrears}元按${p.opening_receivable_date || p.as_of}到账，请核实；不是已确认的现金。`,
     );

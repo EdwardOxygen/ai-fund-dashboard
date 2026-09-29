@@ -2,6 +2,59 @@ const { test, beforeEach } = require("node:test");
 const assert = require("node:assert/strict");
 const { api } = require("../.artifacts/api.cjs");
 let memory;
+test("仅欠收项目进入催收，已收齐和新开工项目不因合同尾款被误判", async () => {
+  const raw = await api.getPlanningData();
+  raw.projects = [0, 1, 2, 3].map((i) => {
+    const received = i === 1 ? 300 : i === 3 ? 0 : 400;
+    const p = {
+      id: i + 1,
+      project_name: `状态测试${i}`,
+      owner_type: "政府单位",
+      contract_amount: 1000,
+      confirmed_output: i === 3 ? 0 : 500,
+      billed_amount: received,
+      collected_amount: received,
+      risk_level: "绿色",
+    };
+    p.plan = {
+      ...defaultProjectPlan(1000, p.confirmed_output, received, localDate()),
+      enabled: true,
+      receipt_account_id: 1,
+    };
+    if (i === 1)
+      Object.assign(p.plan, {
+        opening_receivable_due_date:
+          require("../.artifacts/engine.cjs").shiftDate(localDate(), -30),
+        opening_receivable_date: require("../.artifacts/engine.cjs").shiftDate(
+          localDate(),
+          30,
+        ),
+      });
+    return p;
+  });
+  raw.accounts = [{ ...raw.accounts[0], scope: "general" }];
+  raw.collections = [];
+  raw.payments = [];
+  api.importData(JSON.stringify(raw));
+  const risk = await api.getProjectsRisk();
+  assert.equal(risk.filter((p) => p.collection_risk !== "低").length, 1);
+  const late = risk.find((p) => p.id === 2);
+  assert.equal(late.overdue_amount, 100);
+  assert.equal(late.overdue_days, 30);
+  assert.equal(late.collection_rate, 0.75);
+  assert.ok(
+    risk
+      .filter((p) => p.id !== 2)
+      .every((p) => p.collection_rate === 1 && p.overdue_amount === 0),
+  );
+  const compiled = await api.getSimulationData();
+  assert.equal(compiled.collections.filter((c) => c.aging_days > 0).length, 1);
+  const section = (await api.getAiReport("local")).report
+    .split("四、重点催收")[1]
+    .split("五、管理建议")[0];
+  assert.match(section, /状态测试1/);
+  assert.doesNotMatch(section, /状态测试0|状态测试2|状态测试3/);
+});
 const { defaultProjectPlan, localDate } = require("../.artifacts/engine.cjs");
 beforeEach(() => {
   memory = new Map();

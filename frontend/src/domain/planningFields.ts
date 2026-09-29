@@ -30,6 +30,12 @@ export const planSections: {
       "进度款以累计产值为基数，竣工、结算及质保金以合同额为基数。每个节点只收取累计目标与此前累计已收的差额。金额统一采用相同含税口径。",
     fields: [
       {
+        key: "opening_receivable_due_date",
+        label: "期初待收进度款合同应收日(仅有欠款时填写)",
+        type: "date",
+        optional: true,
+      },
+      {
         key: "opening_receivable_date",
         label: "期初待收进度款预计到账日",
         type: "date",

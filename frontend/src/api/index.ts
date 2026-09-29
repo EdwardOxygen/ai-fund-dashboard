@@ -10,6 +10,7 @@ import {
 import { EXTERNAL_AI_ENABLED } from "../config/features";
 import {
   buildProjectSchedule,
+  projectReceiptStatus,
   validateProjectPlan,
   shiftDate,
   type ProjectPlan,
@@ -110,6 +111,10 @@ export interface PaymentRequest extends PaymentTerms {
   suggestion: string;
 }
 export interface ProjectRisk {
+  outstanding_amount?: number;
+  overdue_amount?: number;
+  overdue_days?: number;
+  collection_basis?: string;
   id: number;
   project_name: string;
   owner_type: string;
@@ -1154,8 +1159,15 @@ function recalculateStore(store: LocalStore): void {
     const rate = project.contract_amount
       ? project.collected_amount / project.contract_amount
       : 0;
-    const collectionHigh = avg < 55 || rate < 0.25;
-    const collectionMedium = avg < 72 || rate < 0.45;
+    const contractual = project.plan?.enabled
+      ? projectReceiptStatus(project.contract_amount, project.plan)
+      : null;
+    const collectionHigh = contractual
+      ? contractual.overdueDays > 60
+      : avg < 55 || rate < 0.25;
+    const collectionMedium = contractual
+      ? contractual.outstanding > 0
+      : avg < 72 || rate < 0.45;
     const paymentHigh =
       unpaid > project.contract_amount * 0.1 ||
       highAmount > project.contract_amount * 0.04;
@@ -1194,7 +1206,7 @@ function snapshot(): LocalStore {
         collection_stage: c.name,
         calculation_note: c.note,
         invoice_status: "未开票",
-        aging_days: 0,
+        aging_days: c.aging_days ?? 0,
         historical_delay_days: 0,
         receipt_account_id: plan.receipt_account_id,
         ai_probability: 0,
@@ -1329,7 +1341,7 @@ function dashboard(store: LocalStore): DashboardSummary {
     })),
     top_payments: paymentRows.slice(0, 10),
     high_risk_projects: high.slice(0, 8),
-    ai_summary: `当前可用资金${formatWanText(accountTotal)}，30日内最大资金缺口${formatWanText(g30)}。建议优先保障农民工工资、税款及影响现场履约的分包付款，重点催收${high.length}个高风险项目。`,
+    ai_summary: `当前可用资金${formatWanText(accountTotal)}，30日内最大资金缺口${formatWanText(g30)}。建议优先保障农民工工资、税款及影响现场履约的分包付款，跟踪${risks.filter((p) => p.collection_risk !== "低").length}个回款待跟进项目；付款压力不等于业主回款逾期。`,
   };
 }
 function projectRisks(store: LocalStore): ProjectRisk[] {
@@ -1351,11 +1363,25 @@ function projectRisks(store: LocalStore): ProjectRisk[] {
       const highAmount = payments
         .filter((item) => (scoreMap.get(item.id)?.ai_score ?? 0) >= 70)
         .reduce((s, item) => s + item.amount, 0);
-      const rate = project.contract_amount
-        ? project.collected_amount / project.contract_amount
-        : 0;
-      const collectionRisk =
-        avg < 55 || rate < 0.25 ? "高" : avg < 72 || rate < 0.45 ? "中" : "低";
+      const contractual = project.plan?.enabled
+        ? projectReceiptStatus(project.contract_amount, project.plan)
+        : null;
+      const rate = contractual
+        ? contractual.rate
+        : project.contract_amount
+          ? project.collected_amount / project.contract_amount
+          : 0;
+      const collectionRisk = contractual
+        ? contractual.overdueDays > 60
+          ? "高"
+          : contractual.outstanding > 0
+            ? "中"
+            : "低"
+        : avg < 55 || rate < 0.25
+          ? "高"
+          : avg < 72 || rate < 0.45
+            ? "中"
+            : "低";
       const paymentRisk =
         unpaid > project.contract_amount * 0.1 ||
         highAmount > project.contract_amount * 0.04
@@ -1369,15 +1395,24 @@ function projectRisks(store: LocalStore): ProjectRisk[] {
           : collectionRisk === "中" || paymentRisk === "中"
             ? "黄色"
             : "绿色";
-      const hint =
-        risk === "红色"
-          ? `项目资金承压，已开票未回款${formatWanText(project.billed_amount - project.collected_amount)}，需强化催收并控制付款节奏。`
+      const hint = contractual
+        ? contractual.outstanding > 0
+          ? `截至项目基准日进度款待收${formatWanText(contractual.outstanding)}；${contractual.overdueDays > 0 ? `逾期${contractual.overdueDays}天，需催收` : "未确认逾期，需核实合同应收日"}。预计补收日${project.plan!.opening_receivable_date || project.plan!.as_of}仅为预测假设。`
+          : `${contractual.expected > 0 ? "截至项目基准日，按进度比例及预付款扣回口径应收款已收齐" : "截至项目基准日暂无应收进度款"}；未到期尾款不作为欠款。付款压力另行评估。`
+        : risk === "红色"
+          ? `项目资金承压，已开票未回款${formatWanText(Math.max(0, project.billed_amount - project.collected_amount))}，需强化催收并控制付款节奏。`
           : risk === "黄色"
             ? "项目回款或付款节奏存在波动，建议纳入周资金调度清单。"
             : "项目资金状态相对稳定，按合同节点持续跟踪回款。";
       return {
         ...project,
         collection_rate: round(rate),
+        outstanding_amount: contractual?.outstanding,
+        overdue_amount: contractual?.overdueAmount,
+        overdue_days: contractual?.overdueDays,
+        collection_basis: contractual
+          ? "基准日进度应收兑现率(含未扣预付款)"
+          : "累计实收占合同额(旧逐笔模式)",
         risk_level: risk,
         collection_risk: collectionRisk,
         payment_risk: paymentRisk,
@@ -1413,11 +1448,8 @@ function localReport(store: LocalStore): AiReport {
   const min = Math.min(...rows.map((item) => item.general_balance));
   let report = `资金驾驶舱分析报告（本地引擎）\n\n一、当前资金总体情况\n当前可用资金${formatWanText(summary.current_available_funds)}，安全线${formatWanText(SAFETY_LINE)}，未来30天最低一般资金余额${formatWanText(min)}，待审批付款${formatWanText(summary.pending_payment_amount)}。\n\n二、资金缺口\n未来7天缺口${formatWanText(summary.gap_7d)}，未来30天缺口${formatWanText(summary.gap_30d)}，未来90天缺口${formatWanText(summary.gap_90d)}。\n\n三、付款安排\n${sentence(immediate, "建议优先安排")}\n${sentence(deferred, "建议暂缓或补充资料")}\n\n四、重点催收\n${
     risks
-      .filter((item) => item.risk_level === "红色")
-      .map(
-        (item) =>
-          `${item.project_name}回款率${(item.collection_rate * 100).toFixed(1)}%`,
-      )
+      .filter((item) => item.collection_risk !== "低")
+      .map((item) => `${item.project_name}：${item.ai_hint}`)
       .join("；") || "暂无重点催收项目。"
   }\n\n五、管理建议\n建议按日滚动录入真实回款、付款和账户余额；红色项目执行周调度，黄色项目双周复盘，所有重大付款先完成合同、结算、发票和工资专户校验。`;
   report += simulationReport(store);

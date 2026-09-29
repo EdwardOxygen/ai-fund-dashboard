@@ -10,8 +10,61 @@ const {
   SCENARIOS,
   csvEncode,
   csvParse,
+  projectReceiptStatus,
 } = require("../.artifacts/engine.cjs");
 const start = "2026-09-29";
+test("按累计进度应收确认已收齐，不把合同尾款当作欠款", () => {
+  const p = defaultProjectPlan(1000, 200, 210, start);
+  Object.assign(p, {
+    advance_ratio: 10,
+    advance_received: 100,
+    advance_recovered: 50,
+  });
+  assert.deepEqual(projectReceiptStatus(1000, p), {
+    expected: 210,
+    outstanding: 0,
+    overdueDays: 0,
+    overdueAmount: 0,
+    rate: 1,
+  });
+  assert.equal(
+    projectReceiptStatus(1000, defaultProjectPlan(1000, 0, 0, start))
+      .outstanding,
+    0,
+  );
+});
+test("逾期应收日与未来补收日分开，逾期30天不改变应收金额", () => {
+  const p = defaultProjectPlan(1000, 500, 300, start);
+  Object.assign(p, {
+    opening_receivable_due_date: "2026-08-30",
+    opening_receivable_date: "2026-10-29",
+  });
+  const r = buildProjectSchedule(1000, p);
+  const c = r.receipts.find((x) => x.name === "期初逾期进度款待收");
+  assert.equal(c.amount, 100);
+  assert.equal(c.aging_days, 30);
+  assert.equal(c.date, "2026-10-29");
+  assert.equal(projectReceiptStatus(1000, p).rate, 0.75);
+  assert.ok(
+    Math.abs(r.receipts.reduce((n, x) => n + x.amount, 0) + 300 - 1000) < 0.01,
+  );
+  p.opening_receivable_due_date = "2026-02-31";
+  assert.throws(() => validateProjectPlan(p, 1000), /合同应收日/);
+  p.opening_receivable_due_date = "2026-11-01";
+  assert.throws(() => validateProjectPlan(p, 1000), /合同应收日/);
+});
+test("尚未到期和无应收日的待收不能被标为逾期", () => {
+  const p = defaultProjectPlan(1000, 500, 300, start);
+  assert.equal(projectReceiptStatus(1000, p).overdueAmount, 0);
+  Object.assign(p, {
+    opening_receivable_due_date: "2026-10-01",
+    opening_receivable_date: "2026-10-29",
+  });
+  assert.equal(projectReceiptStatus(1000, p).overdueDays, 0);
+  p.received_to_date = 400;
+  p.opening_receivable_due_date = "2026-08-30";
+  assert.equal(projectReceiptStatus(1000, p).overdueAmount, 0);
+});
 test("编辑日期为空时自动产值预览不会崩溃，保存时仍需严格校验", () => {
   assert.deepEqual(distributeOutput(1000, "", "2026-12-31", "uniform"), []);
   assert.deepEqual(distributeOutput(-1, start, "2026-12-31", "uniform"), []);
