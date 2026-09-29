@@ -13,22 +13,29 @@ export default function ForecastResults({
   safety?: number;
 }) {
   const company = view.scope.kind === "company";
+  const firstGap = view.days.find((d) => (d.general ?? 0) < -0.01)?.date;
   const balanceLabel = company ? "公司合计余额" : "项目存贷差";
   const metrics: [string, number | string][] = [
     [
-      company ? "公司期初资金（不含用途未确认）" : "项目期初存贷差",
+      company ? "开始时银行可用资金（含专户）" : "开始时项目结余 / 垫资",
       view.opening,
     ],
-    ["本期预计收款", view.inflow],
-    ["本期合同应付款", view.outflow],
-    [company ? "期末公司合计余额" : "期末项目存贷差", view.ending],
+    ["这段时间预计收多少钱", view.inflow],
     [
-      company ? "一般资金最大筹资需求" : "项目垫资峰值",
+      baseline ? "这些情况下预计应付多少" : "这段时间按合同应付多少",
+      view.outflow,
+    ],
+    [
+      company ? "到最后一天银行资金还剩多少" : "到最后一天项目结余 / 垫资",
+      view.ending,
+    ],
+    [
+      company ? "中途最多还缺多少钱" : "项目最多需要垫多少钱",
       company ? view.fundingGap : view.peakAdvance,
     ],
     [
-      company ? "一般资金安全储备不足" : "首次突破垫资限制",
-      company ? view.reserveGap : view.breachDate || "本期未突破",
+      company ? "第一次缺钱是哪天" : "第一次超过允许垫资是哪天",
+      company ? firstGap || "本期未出现" : view.breachDate || "本期未突破",
     ],
   ];
   const report = company
@@ -36,6 +43,83 @@ export default function ForecastResults({
     : `本项目期初存贷差${formatWan(view.opening)}＋本期预计收款${formatWan(view.inflow)}－本期合同应付${formatWan(view.outflow)}＝期末存贷差${formatWan(view.ending)}。垫资峰值${formatWan(view.peakAdvance)}，${view.breachDate ? `于${view.breachDate}突破允许额度或期限` : "本期未突破垫资边界"}。这里不包含公司账户余额，也不是可从银行支取的资金。`;
   return (
     <>
+      <Alert
+        className="page-section"
+        showIcon
+        type={
+          (company ? view.fundingGap > 0 : !!view.breachDate)
+            ? "warning"
+            : "info"
+        }
+        message={
+          company
+            ? view.fundingGap > 0
+              ? `在${baseline ? "这些项目情况" : "原计划"}下，若到期款全部支付，中途最多需要补充${formatWan(view.fundingGap)}可统筹资金。`
+              : "按当前回款假设，本期没有出现未筹足的付款资金。"
+            : view.breachDate
+              ? `本项目在${view.breachDate}超过允许垫资，需要检查回款或付款安排。`
+              : `本项目最多垫资${formatWan(view.peakAdvance)}，本期未超过已设置的限制。`
+        }
+        description={
+          company
+            ? "最后一天有钱，不代表中途每天都够用。公司合计包含专户，工资和项目专户不能随意挪用。下一步可到“公司付款统筹”看能安排哪些款。"
+            : "项目结余也叫存贷差：正数表示累计收得比付得多，负数表示需要公司垫资。它是项目归属账，不是银行账户余额，也不代表项目利润。"
+        }
+      />
+      {baseline && (
+        <Card
+          className="page-section"
+          title="改了这些项目情况，比原计划有什么变化？"
+        >
+          <Table
+            rowKey="label"
+            pagination={false}
+            size="small"
+            scroll={{ x: 550 }}
+            dataSource={[
+              {
+                label: "这段时间收款",
+                before: baseline.inflow,
+                after: view.inflow,
+              },
+              {
+                label: "这段时间应付款",
+                before: baseline.outflow,
+                after: view.outflow,
+              },
+              {
+                label: "最后一天余额",
+                before: baseline.ending,
+                after: view.ending,
+              },
+              {
+                label: company ? "中途最大资金缺口" : "项目垫资峰值",
+                before: company ? baseline.fundingGap : baseline.peakAdvance,
+                after: company ? view.fundingGap : view.peakAdvance,
+              },
+            ]}
+            columns={[
+              { title: "比较内容", dataIndex: "label" },
+              { title: "原计划", dataIndex: "before", render: formatWan },
+              { title: "设置情况后", dataIndex: "after", render: formatWan },
+              {
+                title: "变化（后－前）",
+                render: (_, r) => formatWan(r.after - r.before),
+              },
+            ]}
+          />
+          <p>
+            收款减少可能只是推迟到所选期间之外，并不是少收了合同总额。正负变化不直接代表好坏，请结合指标名称看。
+          </p>
+        </Card>
+      )}
+      {company && safety > 0 && (
+        <Alert
+          className="page-section"
+          type="info"
+          message={`如果还希望额外保留${formatWan(safety)}，离这个目标最多差${formatWan(view.reserveGap)}。这已包含上面的资金缺口，不能重复相加。`}
+        />
+      )}
       <Row gutter={[12, 12]} className="page-section">
         {metrics.map(([label, value]) => (
           <Col xs={24} sm={12} xl={8} key={label}>
@@ -62,16 +146,32 @@ export default function ForecastResults({
                       trigger: "axis",
                       valueFormatter: (v: number) => `${v.toFixed(2)} 万元`,
                     },
-                    legend: { top: 0 },
-                    grid: { left: 75, right: 28, bottom: 65, top: 70 },
+                    legend: { type: "scroll", top: 0, left: 0, right: 0 },
+                    grid: {
+                      left: 12,
+                      right: 22,
+                      bottom: 76,
+                      top: 65,
+                      containLabel: true,
+                    },
                     xAxis: {
                       type: "category",
                       data: view.days.map((d) => d.date),
+                      axisLabel: {
+                        hideOverlap: true,
+                        margin: 14,
+                        formatter: (date: string) => date.slice(5),
+                      },
                     },
                     yAxis: { type: "value", name: "万元" },
                     dataZoom: [
                       { type: "inside" },
-                      { type: "slider", bottom: 8 },
+                      {
+                        type: "slider",
+                        bottom: 10,
+                        height: 20,
+                        showDetail: false,
+                      },
                     ],
                     series: [
                       {
@@ -81,7 +181,7 @@ export default function ForecastResults({
                         itemStyle: { color: "#60a79d" },
                       },
                       {
-                        name: "合同应付",
+                        name: baseline ? "情景应付" : "合同应付",
                         type: "bar",
                         data: view.days.map((d) => -d.outflow / 10000),
                         itemStyle: { color: "#c89878" },
@@ -107,7 +207,10 @@ export default function ForecastResults({
                                 data: [
                                   { yAxis: safety / 10000, name: "安全储备" },
                                 ],
-                                label: { formatter: "安全储备" },
+                                label: {
+                                  formatter: "安全储备",
+                                  position: "insideEndTop",
+                                },
                               },
                             },
                           ]
@@ -225,7 +328,7 @@ export default function ForecastResults({
             : []),
           {
             key: "events",
-            label: "本期合同事件",
+            label: "收付款明细（怎么算的）",
             children: (
               <Table
                 rowKey="id"
@@ -257,6 +360,11 @@ export default function ForecastResults({
             label: "结果说明",
             children: (
               <Card title="本次预测的核对口径">
+                {baseline && (
+                  <p>
+                    本页已叠加逐项目设置的情况；下面的收款日期和应付金额是情景试算值，不会改写原合同。
+                  </p>
+                )}
                 <p>{report}</p>
                 <p>
                   预测区间：{view.start} 至 {view.end}

@@ -57,6 +57,12 @@ export interface SimulationInput {
   collections: CollectionInput[];
   payments: PaymentInput[];
 }
+export interface ProjectScenario {
+  project_id: number;
+  receipt_delay_days: number;
+  construction_delay_days: number;
+  material_increase_pct: number;
+}
 export interface Scenario {
   id: string;
   name: string;
@@ -64,6 +70,8 @@ export interface Scenario {
   construction_delay_days: number;
   material_increase_pct: number;
   project_ids?: number[];
+  /** When present, only explicitly listed projects change. Empty means no stress. */
+  project_scenarios?: ProjectScenario[];
 }
 export const SCENARIOS: Scenario[] = [
   {
@@ -194,8 +202,39 @@ export function makeEvents(
   const events: CashEvent[] = [];
   const warnings: string[] = [...(input.planning_warnings || [])];
   const names = new Map(input.projects.map((p) => [p.id, p.project_name]));
-  const targeted = (id: number) =>
-    !scenario.project_ids?.length || scenario.project_ids.includes(id);
+  const overrides = new Map<number, ProjectScenario>();
+  for (const row of scenario.project_scenarios || []) {
+    if (!Number.isInteger(row.project_id) || overrides.has(row.project_id))
+      throw new Error("每个项目只能添加一条情景，请检查项目选择。");
+    for (const field of [
+      "receipt_delay_days",
+      "construction_delay_days",
+      "material_increase_pct",
+    ] as const) {
+      const value = row[field];
+      if (
+        !Number.isFinite(value) ||
+        value < 0 ||
+        value > (field === "material_increase_pct" ? 100 : 365) ||
+        !Number.isInteger(value)
+      )
+        throw new Error(
+          "项目情景参数须为非负整数：延迟不超过365天，材料增幅不超过100%。",
+        );
+    }
+    overrides.set(row.project_id, row);
+  }
+  const noStress = {
+    receipt_delay_days: 0,
+    construction_delay_days: 0,
+    material_increase_pct: 0,
+  };
+  const settings = (id: number) =>
+    scenario.project_scenarios !== undefined
+      ? overrides.get(id) || noStress
+      : !scenario.project_ids?.length || scenario.project_ids.includes(id)
+        ? scenario
+        : noStress;
   for (const c of input.collections) {
     const project = names.get(c.project_id) || `项目${c.project_id}`;
     const hasTerms = Boolean(c.milestone_date);
@@ -205,15 +244,15 @@ export function makeEvents(
           (c.certification_days || 0) + (c.payment_days || 0),
         )
       : c.expected_date;
-    const affected = targeted(c.project_id);
-    if (affected)
+    const stress = settings(c.project_id);
+    if (stress.receipt_delay_days || stress.construction_delay_days)
       date = addDays(
         date,
-        scenario.receipt_delay_days +
+        stress.receipt_delay_days +
           (c.collection_stage === "未到节点" ||
           (c.generated &&
             ["进度款", "竣工款", "结算款"].includes(c.collection_stage))
-            ? scenario.construction_delay_days
+            ? stress.construction_delay_days
             : 0),
       );
     const overdue = date < start;
@@ -256,9 +295,11 @@ export function makeEvents(
           note,
         });
     };
-    const explanation = hasTerms
-      ? `节点${c.milestone_date}＋审核${c.certification_days || 0}天＋账期${c.payment_days || 0}天；情景：${scenario.name}`
-      : `人工预计日${c.expected_date}；情景：${scenario.name}`;
+    const explanation =
+      (hasTerms
+        ? `节点${c.milestone_date}＋审核${c.certification_days || 0}天＋账期${c.payment_days || 0}天；情景：${scenario.name}`
+        : `人工预计日${c.expected_date}；情景：${scenario.name}`) +
+      `；本项目回款延迟${stress.receipt_delay_days}天、未来节点延迟${stress.construction_delay_days}天`;
     push(
       c.generated ? c.collection_stage : "首期回款",
       date,
@@ -290,10 +331,9 @@ export function makeEvents(
     }
   }
   for (const p of input.payments) {
-    const extra =
-      targeted(p.project_id) && /材料/.test(p.payment_type)
-        ? scenario.material_increase_pct
-        : 0;
+    const extra = /材料/.test(p.payment_type)
+      ? settings(p.project_id).material_increase_pct
+      : 0;
     events.push({
       id: `p${p.id}`,
       source_id: p.id,

@@ -82,6 +82,13 @@ export default function DataEntry() {
         actions={<Button onClick={() => navigate("/")}>维护项目与合同</Button>}
       />
       {error && <Alert type="error" message={error} />}
+      <Alert
+        className="page-section"
+        showIcon
+        type="info"
+        message="这里填银行里已经有的钱，不填未来预计回款。"
+        description="一般资金＝公司可以统一安排的钱；工资专户＝只用于工资；项目专户＝只用于绑定的项目。冻结资金不可用，同一账户不要重复录入。下方录入单位为元，例如100万元请填1000000。"
+      />
       <DataTemplatePanel />
       <Card className="page-section" title="公司资金账户">
         <Table

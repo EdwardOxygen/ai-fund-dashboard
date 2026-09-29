@@ -12,7 +12,7 @@ import {
   Table,
   Tag,
 } from "antd";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import Chart from "../components/Chart";
 import { useFundData } from "../hooks/useFundData";
@@ -23,13 +23,29 @@ import {
   isRigid,
   SCENARIOS,
   type PaymentPlan,
+  type Scenario,
 } from "../domain/simulation";
 
 export default function Allocation() {
   const { data, error } = useFundData();
   const navigate = useNavigate();
-  const [horizon, setHorizon] = useState(30);
-  const [safety, setSafety] = useState(0);
+  const location = useLocation();
+  const scenario = useMemo<Scenario>(
+    () =>
+      location.state?.scenario?.id === "per-project" &&
+      Array.isArray(location.state.scenario.project_scenarios)
+        ? location.state.scenario
+        : SCENARIOS[0],
+    [location.state],
+  );
+  const [horizon, setHorizon] = useState<number>(() =>
+    [7, 30, 90].includes(location.state?.horizon) ? location.state.horizon : 30,
+  );
+  const [safety, setSafety] = useState<number>(() =>
+    Number.isFinite(location.state?.safetyWan) && location.state.safetyWan >= 0
+      ? location.state.safetyWan
+      : 0,
+  );
   const [plan, setPlan] = useState<PaymentPlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState("");
@@ -48,7 +64,7 @@ export default function Allocation() {
       worker.current?.terminate();
       clearTimeout(timer.current);
     };
-  }, [data, horizon, safety]);
+  }, [data, horizon, safety, scenario]);
   const base = useMemo(() => {
     if (!data) return null;
     try {
@@ -56,7 +72,7 @@ export default function Allocation() {
         view: forecastView(
           data,
           { kind: "company" },
-          SCENARIOS[0],
+          scenario,
           horizon,
           safety * 10000,
         ),
@@ -65,7 +81,7 @@ export default function Allocation() {
     } catch (e) {
       return { view: null, error: (e as Error).message };
     }
-  }, [data, horizon, safety]);
+  }, [data, horizon, safety, scenario]);
   function solve() {
     if (!data || !base?.view) return;
     const generation = ++version.current;
@@ -101,7 +117,7 @@ export default function Allocation() {
     }, 15000);
     w.postMessage({
       data,
-      scenario: SCENARIOS[0],
+      scenario,
       horizon,
       safety: safety * 10000,
       start: base.view.start,
@@ -110,6 +126,11 @@ export default function Allocation() {
   if (error) return <Alert type="error" message={error} />;
   if (!data || !base) return <p>正在加载公司付款计划…</p>;
   const names = new Map(data.projects.map((p) => [p.id, p.project_name]));
+  const scenarioAmounts = new Map(
+    base.view?.events
+      .filter((event) => event.direction === "out")
+      .map((event) => [event.source_id, event.amount]),
+  );
   const due = base.view
     ? data.payments.filter(
         (p) => p.due_date <= addDays(base.view!.start, horizon - 1),
@@ -119,17 +140,46 @@ export default function Allocation() {
     <>
       <PageHeader
         title="公司付款统筹"
-        description="在公司资金池内安排各项目分包付款；这不是收支预测，也不会执行真实支付。"
+        description="回答“接下来哪些款先付、能付多少”。先核对原计划，再生成建议；这里只做计划，不会执行银行转账。"
         actions={
           <Button onClick={() => navigate("/company")}>返回公司预测</Button>
         }
       />
+      {scenario.project_scenarios && (
+        <Alert
+          className="page-section"
+          showIcon
+          type="warning"
+          message={`正在按情景安排付款 · 已带入${scenario.project_scenarios.length}个项目情况`}
+          description={
+            <>
+              {scenario.project_scenarios.map((r) => (
+                <p key={r.project_id}>
+                  {names.get(r.project_id)}：晚收{r.receipt_delay_days}
+                  天，未来节点延后{r.construction_delay_days}天，材料付款增加
+                  {r.material_increase_pct}%。
+                </p>
+              ))}
+              <p>
+                只在所选安排周期内计算（最长90天），其余项目按原计划。下方“按期全付”和“统筹建议”都使用这些情况。
+              </p>
+              <Button
+                onClick={() =>
+                  navigate("/allocation", { replace: true, state: null })
+                }
+              >
+                切回原合同计划
+              </Button>
+            </>
+          }
+        />
+      )}
       <Card
         className="page-section"
         title={
           <Space wrap>
             <Tag color="blue">公司整体 · 全部项目共同排程</Tag>
-            <span>基准日 {base.view?.start || "未统一"}</span>
+            <span>数据截至 {base.view?.start || "未统一"}（预测起点）</span>
           </Space>
         }
       >
@@ -145,9 +195,7 @@ export default function Allocation() {
             />
           </Col>
           <Col xs={24} md={8}>
-            <label className="field-label">
-              一般资金安全储备（万元，软目标）
-            </label>
+            <label className="field-label">希望额外留在手里的钱（万元）</label>
             <InputNumber
               aria-label="统筹安全储备万元"
               className="full-width"
@@ -157,7 +205,9 @@ export default function Allocation() {
             />
           </Col>
           <Col xs={24} md={8}>
-            <label className="field-label">当前到期义务 {due.length} 笔</label>
+            <label className="field-label">
+              所选期间到期及以前未付：{due.length} 笔
+            </label>
             <Button
               block
               type="primary"
@@ -170,8 +220,7 @@ export default function Allocation() {
           </Col>
         </Row>
         <p>
-          项目重要系数 ×
-          分包优先系数作为基础权重，逾期待付适当提高优先级。工资、税款等刚性义务优先；账户用途、资料、付款窗口、整笔/分期及项目垫资额度与期限是约束。资金不足时保留未安排金额。
+          希望优先保障的项目和分包，可在合同里把重要系数调高；工资、税款等优先保障。资料不全、钱不够或超过项目允许垫资额度的款项，会保留在“还未安排”里。预留资金只是尽量达到的目标，不保证一定留足。
         </p>
         <Alert
           type="info"
@@ -195,13 +244,13 @@ export default function Allocation() {
             showIcon
             type="success"
             message={plan.status}
-            description="未安排款项仍然存在。安排后的余额改善来自付款节奏变化，不是创造现金或免除债务。"
+            description={`本期应付${formatWan(plan.scheduled + plan.unpaid)}＝建议安排${formatWan(plan.scheduled)}＋还未安排${formatWan(plan.unpaid)}。请在明细“状态”列查看原因。图中余额变高通常是部分款项暂未支付，不是多赚了钱，也不是债务消失。`}
           />
           <Row gutter={[16, 16]} className="page-section">
             {[
-              ["本期已安排", plan.scheduled],
-              ["本期未安排", plan.unpaid],
-              ["安排后最低一般资金", plan.minimum_general_balance],
+              ["建议安排付款（尚未支付）", plan.scheduled],
+              ["还未安排的到期款", plan.unpaid],
+              ["安排后最少可统筹的钱", plan.minimum_general_balance],
             ].map(([label, value]) => (
               <Col xs={24} md={8} key={label}>
                 <Card>
@@ -211,23 +260,51 @@ export default function Allocation() {
             ))}
           </Row>
           <Card
-            title="公司一般资金：合同按期全付与统筹建议"
+            title={
+              scenario.project_scenarios
+                ? "当前情景下可统筹资金：按期全付与统筹建议"
+                : "可统筹资金对比：按合同全付，还是按建议安排"
+            }
             className="page-section"
           >
+            <p>
+              预测区间：{base.view?.start} 至 {base.view?.end}
+              。横轴为月－日，金额单位为万元。
+            </p>
             <Chart
-              style={{ height: 300 }}
+              style={{ height: 370 }}
               option={{
-                tooltip: { trigger: "axis" },
-                legend: {},
-                grid: { left: 70, right: 25, bottom: 40 },
+                tooltip: {
+                  trigger: "axis",
+                  valueFormatter: (v: number) => `${v.toFixed(2)} 万元`,
+                },
+                legend: { type: "scroll", top: 0, left: 0, right: 0 },
+                grid: {
+                  left: 12,
+                  right: 22,
+                  bottom: 76,
+                  top: 65,
+                  containLabel: true,
+                },
                 xAxis: {
                   type: "category",
                   data: plan.cashflow.map((d) => d.date),
+                  axisLabel: {
+                    hideOverlap: true,
+                    margin: 14,
+                    formatter: (date: string) => date.slice(5),
+                  },
                 },
                 yAxis: { type: "value", name: "万元" },
+                dataZoom: [
+                  { type: "inside" },
+                  { type: "slider", bottom: 10, height: 20, showDetail: false },
+                ],
                 series: [
                   {
-                    name: "合同按期全付",
+                    name: scenario.project_scenarios
+                      ? "当前情景按期全付"
+                      : "合同按期全付",
                     type: "line",
                     data: base.view?.days.map((d) => d.general! / 10000),
                     lineStyle: { type: "dashed" },
@@ -244,7 +321,9 @@ export default function Allocation() {
           <Card title="本期付款安排明细" className="page-section">
             <Table
               rowKey="id"
-              dataSource={plan.rows.filter(r => r.due_date <= base.view!.end).sort((a,b) => a.due_date.localeCompare(b.due_date))}
+              dataSource={plan.rows
+                .filter((r) => r.due_date <= base.view!.end)
+                .sort((a, b) => a.due_date.localeCompare(b.due_date))}
               scroll={{ x: 950 }}
               expandable={{
                 expandedRowRender: (r) =>
@@ -280,11 +359,15 @@ export default function Allocation() {
           </Card>
           <details className="page-section">
             <summary>期外合同义务（不计入本期未安排金额）</summary>
-            <Table rowKey="id" dataSource={plan.rows.filter(r => r.due_date > base.view!.end)} columns={[
-              {title:"项目 / 分包",dataIndex:"name"},
-              {title:"合同到期日",dataIndex:"due_date"},
-              {title:"金额",dataIndex:"amount",render:formatWan},
-            ]} />
+            <Table
+              rowKey="id"
+              dataSource={plan.rows.filter((r) => r.due_date > base.view!.end)}
+              columns={[
+                { title: "项目 / 分包", dataIndex: "name" },
+                { title: "合同到期日", dataIndex: "due_date" },
+                { title: "金额", dataIndex: "amount", render: formatWan },
+              ]}
+            />
           </details>
           <Card title="付款建议下的项目垫资复核" className="page-section">
             <Table
@@ -308,7 +391,13 @@ export default function Allocation() {
           </Card>
         </>
       )}
-      <Card title="本期合同应付与优先依据">
+      <Card
+        title={
+          scenario.project_scenarios
+            ? "当前情景应付与优先依据"
+            : "本期合同应付与优先依据"
+        }
+      >
         <Table
           rowKey="id"
           dataSource={due}
@@ -321,7 +410,11 @@ export default function Allocation() {
             },
             { title: "分包 / 对象", dataIndex: "payee_name" },
             { title: "到期日", dataIndex: "due_date" },
-            { title: "金额", dataIndex: "amount", render: formatWan },
+            {
+              title: scenario.project_scenarios ? "情景应付金额" : "金额",
+              render: (_, payment) =>
+                formatWan(scenarioAmounts.get(payment.id) ?? payment.amount),
+            },
             {
               title: "项目×分包权重",
               dataIndex: "priority_weight",

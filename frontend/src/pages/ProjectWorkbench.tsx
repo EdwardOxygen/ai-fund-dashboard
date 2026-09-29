@@ -28,6 +28,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { api, formatWan, type LocalStore } from "../api";
 import PageHeader from "../components/PageHeader";
+import GettingStarted from "../components/GettingStarted";
 import Chart from "../components/Chart";
 import TemplateImport from "../components/TemplateImport";
 import { localDate } from "../domain/simulation";
@@ -280,6 +281,7 @@ export default function ProjectWorkbench() {
           </Space>
         }
       />
+      {!id && <GettingStarted />}
       <div className="project-overview page-section">
         <div>
           <span className="page-eyebrow">PROJECTS</span>
@@ -341,7 +343,7 @@ export default function ProjectWorkbench() {
                     <span>重要系数 {p.plan?.importance || "待设置"}</span>
                     {p.plan?.enabled && <Button onClick={() => navigate(`/project/${p.id}/forecast`)}>项目预测</Button>}
                     <Button type="text" onClick={() => select(p.id)}>
-                      进入项目 <ArrowRightOutlined />
+                      填写 / 修改合同 <ArrowRightOutlined />
                     </Button>
                   </div>
                 </Card>
