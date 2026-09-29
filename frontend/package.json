@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@ant-design/icons": "^5.5.1",
+    "@fontsource-variable/inter": "^5.3.0",
     "antd": "^5.22.5",
     "echarts": "^6.1.0",
     "echarts-for-react": "^3.0.2",

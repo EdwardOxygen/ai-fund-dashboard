@@ -212,9 +212,9 @@ export default function App() {
           colorSuccess: "#1f9d73",
           colorWarning: "#d97706",
           colorError: "#d65353",
-          borderRadius: 8,
+          borderRadius: 12,
           fontSize: 14,
-          fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif"
+          fontFamily: "'Inter Variable', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif"
         },
         components: {
           Card: { paddingLG: 22 },
