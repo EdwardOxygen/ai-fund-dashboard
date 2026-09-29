@@ -14,6 +14,7 @@ import {
 import { useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import ForecastResults from "../components/ForecastResults";
+import DownstreamWarnings from "../components/DownstreamWarnings";
 import { useFundData } from "../hooks/useFundData";
 import { forecastView, type ForecastScope } from "../domain/forecast";
 import ProjectScenarioEditor from "../components/ProjectScenarioEditor";
@@ -228,6 +229,19 @@ export default function ForecastWorkspace({
             safety={safetyWan * 10000}
           />
         )
+      )}
+      {calculations?.result && (
+        <DownstreamWarnings
+          projects={
+            scope.kind === "project"
+              ? data.projects.filter((p) => p.id === scope.projectId)
+              : data.projects
+          }
+          end={calculations.result.end}
+          payments={calculations.result.events.filter(
+            (e) => e.direction === "out",
+          )}
+        />
       )}
     </>
   );

@@ -1,3 +1,7 @@
+import {
+  validateDownstreamControl,
+  type DownstreamControl,
+} from "./downstreamControl";
 /** Project contracts produce deterministic cash events. Amounts are CNY, not probabilities. */
 export interface OutputPeriod {
   date: string;
@@ -26,6 +30,7 @@ export interface SubcontractPlan {
   documents_ready: boolean;
 }
 export interface ProjectPlan {
+  downstream_control?: DownstreamControl;
   enabled: boolean;
   as_of: string;
   importance: number;
@@ -195,6 +200,8 @@ export function distributeOutput(
 export function validateProjectPlan(plan: ProjectPlan, contract: number) {
   if (!plan || typeof plan !== "object" || typeof plan.enabled !== "boolean")
     throw new Error("项目预测设置无效");
+  if (plan.downstream_control !== undefined)
+    validateDownstreamControl(plan.downstream_control, plan.as_of);
   const amounts = [
     "opening_output",
     "received_to_date",
@@ -274,10 +281,12 @@ export function validateProjectPlan(plan: ProjectPlan, contract: number) {
     plan.advance_received > plan.received_to_date
   )
     throw new Error("预付款已收、已扣及累计已收关系不正确");
-  if (!(
-    plan.progress_ratio <= plan.completion_ratio &&
-    plan.completion_ratio <= plan.settlement_ratio
-  ))
+  if (
+    !(
+      plan.progress_ratio <= plan.completion_ratio &&
+      plan.completion_ratio <= plan.settlement_ratio
+    )
+  )
     throw new Error("累计支付比例须满足：进度 ≤ 竣工 ≤ 结算 ≤ 100%");
   if (plan.output_end < plan.output_start || plan.output_start < plan.as_of)
     throw new Error("未来产值开始日不得早于预测基准日，结束日不得早于开始日");

@@ -29,6 +29,9 @@ import { useNavigate } from "react-router-dom";
 import { api, formatWan, type LocalStore } from "../api";
 import PageHeader from "../components/PageHeader";
 import GettingStarted from "../components/GettingStarted";
+import DownstreamControlEditor from "../components/DownstreamControlEditor";
+import { DownstreamStatus } from "../components/DownstreamWarnings";
+import { checkDownstream } from "../domain/downstreamControl";
 import Chart from "../components/Chart";
 import TemplateImport from "../components/TemplateImport";
 import { localDate } from "../domain/simulation";
@@ -282,6 +285,37 @@ export default function ProjectWorkbench() {
         }
       />
       {!id && <GettingStarted />}
+      {!id &&
+        data.projects.some(
+          (p) =>
+            p.project_name.startsWith("【模拟】") &&
+            p.plan &&
+            !p.plan.downstream_control,
+        ) && (
+          <Alert
+            className="page-section"
+            showIcon
+            type="info"
+            message="给已有模拟项目补充成本与比例预警示例"
+            description="仅补充预置的4个模拟项目尚未填写的成本和预警设置；不改银行余额、收款、分包合同及已填成本。示例包含正常、超比例和零成本待确认。"
+            action={
+              <Button
+                onClick={async () => {
+                  try {
+                    const count = await api.fillDownstreamDemo();
+                    msg.success(
+                      `已补充${count}个模拟项目，原收付款数据保持不变`,
+                    );
+                  } catch (e) {
+                    msg.error((e as Error).message);
+                  }
+                }}
+              >
+                补充模拟成本数据
+              </Button>
+            }
+          />
+        )}
       <div className="project-overview page-section">
         <div>
           <span className="page-eyebrow">PROJECTS</span>
@@ -339,9 +373,21 @@ export default function ProjectWorkbench() {
                   <p>
                     {p.owner_type} · 合同额 {formatWan(p.contract_amount)}
                   </p>
+                  {p.plan?.enabled && (
+                    <p>
+                      下游付款：
+                      <DownstreamStatus check={checkDownstream(p.plan)} />
+                    </p>
+                  )}
                   <div className="project-tile-footer">
                     <span>重要系数 {p.plan?.importance || "待设置"}</span>
-                    {p.plan?.enabled && <Button onClick={() => navigate(`/project/${p.id}/forecast`)}>项目预测</Button>}
+                    {p.plan?.enabled && (
+                      <Button
+                        onClick={() => navigate(`/project/${p.id}/forecast`)}
+                      >
+                        项目预测
+                      </Button>
+                    )}
                     <Button type="text" onClick={() => select(p.id)}>
                       填写 / 修改合同 <ArrowRightOutlined />
                     </Button>
@@ -406,7 +452,14 @@ export default function ProjectWorkbench() {
             message="项目计划口径"
             description="启用合同预测后，该项目原有逐笔收付款仅保留备查，不参与重复汇总。期初实收实付已包含在账户余额中，不再计入未来现金流。设置完成后请保存；预览是未保存草稿。"
           />
-          {!plan.subcontracts.length && <Alert className="page-section" type="warning" showIcon message="尚未录入分包：启用合同预测后，本项目付款预测将为0。请先补全分包计划，这不代表项目没有支出。" />}
+          {!plan.subcontracts.length && (
+            <Alert
+              className="page-section"
+              type="warning"
+              showIcon
+              message="尚未录入分包：启用合同预测后，本项目付款预测将为0。请先补全分包计划，这不代表项目没有支出。"
+            />
+          )}
           <Tabs
             defaultActiveKey="terms"
             items={[
@@ -740,6 +793,13 @@ export default function ProjectWorkbench() {
                 ),
               },
               {
+                key: "cost-control",
+                label: "成本确认与付款预警",
+                children: (
+                  <DownstreamControlEditor plan={plan} onChange={change} />
+                ),
+              },
+              {
                 key: "funding",
                 label: "基准与垫资约束",
                 children: (
@@ -852,7 +912,22 @@ export default function ProjectWorkbench() {
                             这是当前草稿从基准日至尾款收清的剩余全周期，不是未来30/90天的公司测算。月末存贷差不代表月内最低值。
                           </Typography.Text>
                         </Card>
-                        <Space className="page-section"><Button type="primary" disabled={dirty || !project?.plan?.enabled} onClick={() => navigate(`/project/${project!.id}/forecast`)}>查看已保存项目的逐日预测</Button><span>{dirty ? '请先保存草稿' : '独立项目范围，核对每日垫资额度与期限'}</span></Space>
+                        <Space className="page-section">
+                          <Button
+                            type="primary"
+                            disabled={dirty || !project?.plan?.enabled}
+                            onClick={() =>
+                              navigate(`/project/${project!.id}/forecast`)
+                            }
+                          >
+                            查看已保存项目的逐日预测
+                          </Button>
+                          <span>
+                            {dirty
+                              ? "请先保存草稿"
+                              : "独立项目范围，核对每日垫资额度与期限"}
+                          </span>
+                        </Space>
                         <Card title="逐笔合同收支">
                           <Table
                             rowKey={(_, i) => String(i)}

@@ -19,6 +19,7 @@ import {
   type ProjectPlan,
 } from "../domain/projectPlanning";
 import { dataTemplates, type DataCategory } from "../domain/dataTemplates";
+import { defaultDownstreamControl } from "../domain/downstreamControl";
 /*
  * 本地业务引擎：除“外部 AI 报告”外，系统不再调用任何业务 API。
  * 真实数据由用户在页面录入，计算在浏览器完成，并保存在当前浏览器中。
@@ -238,6 +239,20 @@ export const SAFETY_LINE = 0;
 let aiConfig: AiProviderConfigPayload | null = null;
 
 export const PREDICTION_RULES: PredictionRuleSection[] = [
+  {
+    title: "下游成本与付款比例预警",
+    formula:
+      "项目下游付款比例＝全部下游累计实际已付÷同日累计已确认成本；默认在施70%、竣工80%、结算后100%",
+    variables: [
+      "每个项目独立开关和调整比例，没有公司总开关。分包、材料、机械等合并检查。",
+      "项目阶段使用独立的竣工/结算日期或手动设置，不使用业主到账日期。",
+    ],
+    rules: [
+      "超过比例只提示，不减少合同应付、不改变付款优化的权重、约束和质保金。",
+      "未来只在已填写成本计划的日期核对预计累计付款，不以当前成本替代未来成本；当前与未来口径分列。",
+      "成本未填、为0或与当前基准日不一致时提示依据不足；月度累计数不相加。",
+    ],
+  },
   {
     title: "项目预测与公司预测",
     formula:
@@ -1305,6 +1320,53 @@ function simulationReport(store: LocalStore): string {
   );
 }
 export const api = {
+  fillDownstreamDemo: async () =>
+    mutate((store) => {
+      const ratios: Record<string, number> = {
+        "【模拟】滨江道路改造—正常回款": 0.65,
+        "【模拟】城南安置房—回款偏慢": 0.78,
+        "【模拟】科创学校EPC—重点保供": 0.68,
+        "【模拟】智造园厂房—新开工": 0,
+      };
+      let count = 0;
+      for (const project of store.projects) {
+        const plan = project.plan;
+        if (
+          !plan ||
+          plan.downstream_control !== undefined ||
+          ratios[project.project_name] === undefined
+        )
+          continue;
+        const paid = plan.subcontracts.reduce((s, p) => s + p.paid, 0);
+        const total = plan.subcontracts.reduce((s, p) => s + p.amount, 0);
+        const ratio = ratios[project.project_name];
+        const amount = ratio ? Math.round(paid / ratio / 10000) * 10000 : 0;
+        plan.downstream_control = {
+          ...defaultDownstreamControl(),
+          stage_mode: "auto",
+          completion_date: plan.output_end,
+          settlement_date: plan.settlement_date,
+          costs: [
+            {
+              date: shiftDate(plan.as_of, -30),
+              kind: "confirmed",
+              amount: Math.round((amount * 0.85) / 10000) * 10000,
+            },
+            { date: plan.as_of, kind: "confirmed", amount },
+            ...[29, 59, 89].map((days, index) => ({
+              date: shiftDate(plan.as_of, days),
+              kind: "planned" as const,
+              amount:
+                Math.round(
+                  (amount + ((total - amount) * (index + 1)) / 6) / 10000,
+                ) * 10000,
+            })),
+          ],
+        };
+        count++;
+      }
+      return count;
+    }),
   previewBatch: async (
     category: DataCategory,
     rows: Record<string, unknown>[],

@@ -15,6 +15,7 @@ import {
 import { useLocation, useNavigate } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import Chart from "../components/Chart";
+import DownstreamWarnings from "../components/DownstreamWarnings";
 import { useFundData } from "../hooks/useFundData";
 import { formatWan } from "../api";
 import { forecastView } from "../domain/forecast";
@@ -389,6 +390,18 @@ export default function Allocation() {
               ]}
             />
           </Card>
+          <DownstreamWarnings
+            projects={data.projects}
+            end={base.view!.end}
+            mode="allocation"
+            payments={plan.rows.flatMap((row) =>
+              row.allocations.map((payment) => ({
+                ...payment,
+                project_id:
+                  data.payments.find((p) => p.id === row.id)?.project_id ?? -1,
+              })),
+            )}
+          />
         </>
       )}
       <Card
