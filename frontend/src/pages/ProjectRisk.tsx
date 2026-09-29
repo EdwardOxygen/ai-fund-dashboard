@@ -38,24 +38,28 @@ export default function ProjectRisk() {
     {
       title: "合同额",
       dataIndex: "contract_amount",
+      width: 125,
       align: "right",
       render: (value: number) => formatWan(value),
     },
     {
       title: "确权产值",
       dataIndex: "confirmed_output",
+      width: 125,
       align: "right",
       render: (value: number) => formatWan(value),
     },
     {
       title: "已开票金额",
       dataIndex: "billed_amount",
+      width: 125,
       align: "right",
       render: (value: number) => formatWan(value),
     },
     {
       title: "已回款金额",
       dataIndex: "collected_amount",
+      width: 125,
       align: "right",
       render: (value: number) => formatWan(value),
     },
@@ -72,22 +76,25 @@ export default function ProjectRisk() {
     {
       title: "期初进度款待收",
       dataIndex: "outstanding_amount",
+      width: 145,
       align: "right",
       render: (v?: number) => (v === undefined ? "—" : formatWan(v)),
     },
     {
       title: "其中逾期",
       dataIndex: "overdue_amount",
+      width: 125,
       align: "right",
       render: (v?: number) => (v === undefined ? "—" : formatWan(v)),
     },
     {
       title: "逾期天数",
       dataIndex: "overdue_days",
+      width: 90,
       render: (v?: number) => (v === undefined ? "待核实" : `${v}天`),
     },
     {
-      title: "风险等级",
+      title: "综合风险",
       dataIndex: "risk_level",
       width: 100,
       render: (value: string) => <Tag color={riskColor(value)}>{value}</Tag>,
@@ -131,7 +138,7 @@ export default function ProjectRisk() {
           dataSource={data}
           loading={loading}
           pagination={{ pageSize: 8 }}
-          scroll={{ x: 1580 }}
+          scroll={{ x: 2050 }}
         />
       </Card>
     </>
