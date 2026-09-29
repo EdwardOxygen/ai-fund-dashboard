@@ -39,6 +39,8 @@ test("仅欠收项目进入催收，已收齐和新开工项目不因合同尾�
   const risk = await api.getProjectsRisk();
   assert.equal(risk.filter((p) => p.collection_risk !== "低").length, 1);
   const late = risk.find((p) => p.id === 2);
+  const masters = await api.getProjectMasters();
+  assert.deepEqual(masters.map(p => p.collection_rate), [1,.75,1,1]);
   assert.equal(late.overdue_amount, 100);
   assert.equal(late.overdue_days, 30);
   assert.equal(late.collection_rate, 0.75);

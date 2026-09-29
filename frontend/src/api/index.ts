@@ -1666,7 +1666,9 @@ export const api = {
     const store = snapshot();
     return store.projects.map((project) => ({
       ...project,
-      collection_rate: project.contract_amount
+      collection_rate: project.plan?.enabled
+        ? round(projectReceiptStatus(project.contract_amount, project.plan).rate)
+        : project.contract_amount
         ? round(project.collected_amount / project.contract_amount)
         : 0,
       expected_collection_count: store.collections.filter(

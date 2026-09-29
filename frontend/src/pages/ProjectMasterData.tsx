@@ -134,13 +134,13 @@ export default function ProjectMasterData() {
     { title: "已开票", dataIndex: "billed_amount", width: 130, align: "right", render: (value: number) => formatWan(value) },
     { title: "已回款", dataIndex: "collected_amount", width: 130, align: "right", render: (value: number) => formatWan(value) },
     {
-      title: "回款率",
+      title: "应收兑现率",
       dataIndex: "collection_rate",
       width: 150,
       render: (value: number) => <Progress percent={Number((value * 100).toFixed(1))} size="small" />
     },
     {
-      title: "风险",
+      title: "综合风险",
       dataIndex: "risk_level",
       width: 90,
       render: (value: string) => <Tag color={riskColor(value)}>{value}</Tag>
@@ -185,7 +185,7 @@ export default function ProjectMasterData() {
       {contextHolder}
       <PageHeader
         title="项目主数据管理"
-        description="统一维护项目名称、业主类型、合同额、确权产值、开票金额和已回款金额。"
+        description="合同预测项目的应收兑现率＝基准日实收÷按进度比例及预付款扣回口径应收，暂无应收视为无欠款；旧逐笔模式仍按实收÷合同额显示。综合风险包含付款压力，不等同于回款逾期。"
         actions={<Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>新增项目</Button>}
       />
 
