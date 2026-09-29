@@ -24,6 +24,7 @@ import {
   ProjectPayload
 } from "../api";
 import PageHeader from "../components/PageHeader";
+import DataTemplatePanel from '../components/DataTemplatePanel';
 
 type AccountFormValues = BankAccountPayload & {
   account_id: "new" | number;
@@ -244,6 +245,7 @@ export default function DataEntry() {
 
       {error ? <Alert type="error" showIcon message={error} className="page-section" /> : null}
 
+      <DataTemplatePanel />
       <Tabs
         className="entry-tabs"
         items={[

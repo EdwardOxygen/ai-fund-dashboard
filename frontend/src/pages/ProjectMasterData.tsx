@@ -21,6 +21,7 @@ import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { api, ProjectMaster, ProjectPayload, formatWan } from "../api";
 import { riskColor } from "../components/RiskCard";
 import PageHeader from "../components/PageHeader";
+import DataTemplatePanel from '../components/DataTemplatePanel';
 
 const initialValues: ProjectPayload = {
   project_name: "",
@@ -190,6 +191,7 @@ export default function ProjectMasterData() {
 
       {error ? <Alert type="error" showIcon message={error} className="page-section" /> : null}
 
+      <DataTemplatePanel />
       <Table
         rowKey="id"
         columns={columns}

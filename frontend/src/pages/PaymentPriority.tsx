@@ -35,7 +35,7 @@ export default function PaymentPriority() {
     <>
       <PageHeader
         title="付款优先级决策"
-        description="按规则分从高到低排序，辅助识别工资、税款和履约付款的紧迫性；此清单不是可支付承诺，请在收支模拟中计算满足资金约束的付款安排。"
+        description="按统筹权重排序：项目重要系数×分包优先系数×付款规则权重。刚性付款单列高权重。此清单不是可支付承诺，请在统筹付款中计算满足现金与项目垫资约束的方案。"
       />
       {error ? <Alert type="error" showIcon message={error} className="page-section" /> : null}
       <Card variant="borderless">

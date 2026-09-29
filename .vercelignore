@@ -1,0 +1,12 @@
+.artifacts
+.env
+.env.*
+.git
+frontend/node_modules
+frontend/dist
+backend/venv
+venv
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/*.log

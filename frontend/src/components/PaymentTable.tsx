@@ -19,6 +19,8 @@ function suggestionColor(suggestion: string): string {
 
 export default function PaymentTable({ data, loading, compact }: PaymentTableProps) {
   const columns: ColumnsType<PaymentPriority> = [
+    { title: '项目×分包系数', dataIndex: 'priority_weight', width: 125, render: v => `${v} 倍` },
+    { title: '统筹权重', dataIndex: 'weighted_score', width: 120, sorter: (a,b)=>a.weighted_score-b.weighted_score, render: v=>v>=1e9?'刚性优先':v.toLocaleString() },
     {
       title: "项目名称",
       dataIndex: "project_name",
