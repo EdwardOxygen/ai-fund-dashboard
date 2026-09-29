@@ -123,7 +123,8 @@ function AppShell() {
       "/cashflow": "现金流预测",
       "/simulation": "情景推演",
       "/payments": "付款优先级",
-      "/projects": "项目风险",
+      "/projects": "项目工作台",
+      "/project-risk": "项目风险明细",
       "/master-data/projects": "项目主数据",
       "/entry": "业务数据",
       "/report": "资金分析报告",
@@ -280,7 +281,7 @@ function AppShell() {
                   element={<Simulation key="simulation" />}
                 />
                 <Route path="/payments" element={<PaymentPriority />} />
-                <Route path="/projects" element={<ProjectWorkbench />} />
+                <Route path="/projects" element={<Navigate to="/" replace />} />
                 <Route path="/project-risk" element={<ProjectRisk />} />
                 <Route
                   path="/master-data/projects"
