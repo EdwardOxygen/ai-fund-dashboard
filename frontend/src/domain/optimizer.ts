@@ -10,6 +10,7 @@ import {
   localDate,
   SCENARIOS,
   projectPositions,
+  paymentPriorityCost,
   type CashEvent,
   type SimulationInput,
   type PaymentPlan,
@@ -24,7 +25,7 @@ export function optimizePayments(
   input: SimulationInput,
   scenario = SCENARIOS[0],
   horizon = 30,
-  safety = 3000000,
+  safety = 0,
   start = localDate(),
 ): PaymentPlan {
   horizon = Math.max(1, Math.min(90, Math.floor(horizon)));
@@ -101,9 +102,7 @@ export function optimizePayments(
     const amount = event.amount / 10000;
     constraints[`payment_${p.id}`] = { equal: amount };
     variables[`unpaid_${p.id}`] = {
-      cost: isRigid(p)
-        ? 1000000000
-        : (10000 + p.ai_score * 100) * (p.priority_weight ?? 1),
+      cost: paymentPriorityCost(p, start),
       [`payment_${p.id}`]: 1,
     };
     if (p.attachment_status !== "完整") continue;

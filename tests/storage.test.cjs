@@ -79,7 +79,7 @@ test("示例数据与看板/预测/报告口径一致", async () => {
   ]);
   assert.equal(
     d.gap_30d,
-    Math.max(0, 3000000 - Math.min(...rows.map((r) => r.general_balance))),
+    Math.max(0, -Math.min(...rows.map((r) => r.general_balance))),
   );
   assert.equal(d.cashflow_trend[0].ending_balance, rows[0].general_balance);
   assert.equal(report.metrics.gap_30d, d.gap_30d);

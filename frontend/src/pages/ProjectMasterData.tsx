@@ -13,13 +13,11 @@ import {
   Select,
   Space,
   Table,
-  Tag,
   message
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { api, ProjectMaster, ProjectPayload, formatWan } from "../api";
-import { riskColor } from "../components/RiskCard";
 import PageHeader from "../components/PageHeader";
 import DataTemplatePanel from '../components/DataTemplatePanel';
 
@@ -139,16 +137,10 @@ export default function ProjectMasterData() {
       width: 150,
       render: (value: number) => <Progress percent={Number((value * 100).toFixed(1))} size="small" />
     },
-    {
-      title: "综合风险",
-      dataIndex: "risk_level",
-      width: 90,
-      render: (value: string) => <Tag color={riskColor(value)}>{value}</Tag>
-    },
     { title: "预计回款", dataIndex: "expected_collection_count", width: 90, align: "right" },
-    { title: "付款申请", dataIndex: "payment_request_count", width: 90, align: "right" },
+    { title: "合同付款节点", dataIndex: "payment_request_count", width: 110, align: "right" },
     {
-      title: "待付款金额",
+      title: "剩余全周期应付",
       dataIndex: "unpaid_payment_amount",
       width: 130,
       align: "right",
@@ -185,7 +177,7 @@ export default function ProjectMasterData() {
       {contextHolder}
       <PageHeader
         title="项目主数据管理"
-        description="合同预测项目的应收兑现率＝基准日实收÷按进度比例及预付款扣回口径应收，暂无应收视为无欠款；旧逐笔模式仍按实收÷合同额显示。综合风险包含付款压力，不等同于回款逾期。"
+        description="合同预测项目的应收兑现率＝基准日实收÷按进度比例及预付款扣回口径应收，暂无应收视为无欠款；旧逐笔模式仍按实收÷合同额显示。下方应付为剩余全周期合同义务，不等同于本月到期款。"
         actions={<Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>新增项目</Button>}
       />
 

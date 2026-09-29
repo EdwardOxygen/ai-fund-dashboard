@@ -151,6 +151,14 @@ export const cents = (n: number) => Math.round(n * 100) / 100;
 export const sum = (items: number[]) => cents(items.reduce((a, b) => a + b, 0));
 export const isRigid = (p: PaymentInput) =>
   p.is_rigid_payment || /工资|税款/.test(p.payment_type);
+export function paymentPriorityCost(p: PaymentInput, start: string) {
+  if (isRigid(p)) return 1000000000;
+  const overdue = Math.max(
+    0,
+    Math.floor((Date.parse(start) - Date.parse(p.due_date)) / 86400000),
+  );
+  return 10000 * (p.priority_weight ?? 1) * (1 + Math.min(90, overdue) / 30);
+}
 export function accountPool(account: AccountInput): string {
   if (account.scope === "general") return "general";
   if (account.scope === "payroll") return "payroll";
@@ -202,7 +210,9 @@ export function makeEvents(
       date = addDays(
         date,
         scenario.receipt_delay_days +
-          (c.collection_stage === "未到节点" || c.generated
+          (c.collection_stage === "未到节点" ||
+          (c.generated &&
+            ["进度款", "竣工款", "结算款"].includes(c.collection_stage))
             ? scenario.construction_delay_days
             : 0),
       );
@@ -308,7 +318,7 @@ export function simulate(
   input: SimulationInput,
   scenario: Scenario = SCENARIOS[0],
   horizon = 90,
-  safety = 3000000,
+  safety = 0,
   start = localDate(),
 ): SimulationResult {
   const daysCount = Math.max(1, Math.min(730, Math.floor(horizon)));

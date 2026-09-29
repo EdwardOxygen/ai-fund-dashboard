@@ -6,14 +6,11 @@ import {
   DashboardOutlined,
   DeleteOutlined,
   DownloadOutlined,
-  FileTextOutlined,
   FormOutlined,
   FundProjectionScreenOutlined,
-  LineChartOutlined,
   OrderedListOutlined,
   ReadOutlined,
   ReloadOutlined,
-  WarningOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
 import {
@@ -39,50 +36,34 @@ import {
 } from "react-router-dom";
 import { api } from "./api";
 
-const AiReport = lazy(() => import("./pages/AiReport"));
-const CashflowForecast = lazy(() => import("./pages/CashflowForecast"));
 const DataEntry = lazy(() => import("./pages/DataEntry"));
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const PaymentPriority = lazy(() => import("./pages/PaymentPriority"));
+const ForecastWorkspace = lazy(() => import("./pages/ForecastWorkspace"));
+const Allocation = lazy(() => import("./pages/Allocation"));
 const ProjectMasterData = lazy(() => import("./pages/ProjectMasterData"));
-const ProjectRisk = lazy(() => import("./pages/ProjectRisk"));
 const TechnicalPrinciples = lazy(() => import("./pages/TechnicalPrinciples"));
-const Simulation = lazy(() => import("./pages/Simulation"));
 const ProjectWorkbench = lazy(() => import("./pages/ProjectWorkbench"));
 
 const { Header, Content } = Layout;
 
 const items: MenuProps["items"] = [
-  { key: "/", icon: <ApartmentOutlined />, label: "项目工作台" },
-  { key: "/company", icon: <DashboardOutlined />, label: "公司资金总览" },
-  { key: "/allocation", icon: <OrderedListOutlined />, label: "统筹付款" },
+  { key: "/", icon: <ApartmentOutlined />, label: "项目与合同" },
+  { key: "/company", icon: <DashboardOutlined />, label: "公司收支预测" },
+  { key: "/allocation", icon: <OrderedListOutlined />, label: "公司付款统筹" },
   {
     key: "/simulation",
     icon: <FundProjectionScreenOutlined />,
-    label: "情景推演",
+    label: "情景对比",
   },
-  { key: "/report", icon: <FileTextOutlined />, label: "资金报告" },
   {
     key: "settings",
     icon: <SettingOutlined />,
-    label: "数据与设置",
+    label: "账户与导入",
     children: [
       { key: "/entry", icon: <FormOutlined />, label: "账户与数据导入" },
       {
         key: "/master-data/projects",
         icon: <ApartmentOutlined />,
         label: "项目基本信息",
-      },
-      { key: "/cashflow", icon: <LineChartOutlined />, label: "逐日现金流" },
-      {
-        key: "/payments",
-        icon: <OrderedListOutlined />,
-        label: "付款评分明细",
-      },
-      {
-        key: "/project-risk",
-        icon: <WarningOutlined />,
-        label: "项目风险明细",
       },
       { key: "/principles", icon: <ReadOutlined />, label: "计算规则与说明" },
     ],
@@ -117,11 +98,11 @@ function AppShell() {
 
   const activeLabel = useMemo(() => {
     const labels: Record<string, string> = {
-      "/": "项目工作台",
-      "/company": "公司资金总览",
-      "/allocation": "统筹付款",
+      "/": "项目与合同",
+      "/company": "公司收支预测",
+      "/allocation": "公司付款统筹",
       "/cashflow": "现金流预测",
-      "/simulation": "情景推演",
+      "/simulation": "情景对比",
       "/payments": "付款优先级",
       "/projects": "项目工作台",
       "/project-risk": "项目风险明细",
@@ -130,7 +111,7 @@ function AppShell() {
       "/report": "资金分析报告",
       "/principles": "模型与规则",
     };
-    return labels[location.pathname] || "资金总览";
+    return labels[location.pathname] || "项目收支预测";
   }, [location.pathname]);
 
   function goTo(key: string) {
@@ -253,7 +234,11 @@ function AppShell() {
         <nav className="top-navigation" aria-label="主导航">
           <Menu
             mode="horizontal"
-            selectedKeys={[location.pathname]}
+            selectedKeys={[
+              location.pathname.startsWith("/project/")
+                ? "/"
+                : location.pathname,
+            ]}
             items={items}
             onClick={({ key }) => goTo(String(key))}
           />
@@ -270,25 +255,41 @@ function AppShell() {
             >
               <Routes>
                 <Route path="/" element={<ProjectWorkbench />} />
-                <Route path="/company" element={<Dashboard />} />
                 <Route
-                  path="/allocation"
-                  element={<Simulation key="allocation" allocationMode />}
+                  path="/company"
+                  element={<ForecastWorkspace key="company" />}
                 />
-                <Route path="/cashflow" element={<CashflowForecast />} />
+                <Route
+                  path="/project/:projectId/forecast"
+                  element={<ForecastWorkspace key="project" mode="project" />}
+                />
+                <Route path="/allocation" element={<Allocation />} />
+                <Route
+                  path="/cashflow"
+                  element={<Navigate to="/company" replace />}
+                />
                 <Route
                   path="/simulation"
-                  element={<Simulation key="simulation" />}
+                  element={<ForecastWorkspace key="scenario" mode="scenario" />}
                 />
-                <Route path="/payments" element={<PaymentPriority />} />
+                <Route
+                  path="/payments"
+                  element={<Navigate to="/allocation" replace />}
+                />
                 <Route path="/projects" element={<Navigate to="/" replace />} />
-                <Route path="/project-risk" element={<ProjectRisk />} />
+                <Route
+                  path="/project-risk"
+                  element={<Navigate to="/company" replace />}
+                />
                 <Route
                   path="/master-data/projects"
                   element={<ProjectMasterData />}
                 />
                 <Route path="/entry" element={<DataEntry />} />
-                <Route path="/report" element={<AiReport />} />
+                <Route
+                  path="/report"
+                  element={<Navigate to="/company" replace />}
+                />
                 <Route path="/principles" element={<TechnicalPrinciples />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

@@ -27,7 +27,7 @@ export default function DataTemplatePanel() {
           style={{ width: 180 }}
           value={category}
           onChange={setCategory}
-          options={Object.entries(dataTemplates).map(([value, t]) => ({
+          options={Object.entries(dataTemplates).filter(([value]) => value === 'accounts' || value === 'projects').map(([value, t]) => ({
             value,
             label: t.title,
           }))}

@@ -3,10 +3,13 @@ import {
   SCENARIOS,
   localDate,
   accountPool,
+  paymentPriorityCost,
+  isRigid,
   type CollectionTerms,
   type PaymentTerms,
   type FundScope,
 } from "../domain/simulation";
+import { forecastBasis, forecastView } from "../domain/forecast";
 import { EXTERNAL_AI_ENABLED } from "../config/features";
 import {
   buildProjectSchedule,
@@ -231,133 +234,87 @@ export type LocalStore = {
   payments: PaymentRequest[];
 };
 const STORAGE_KEY = "ai-fund-dashboard-local-v3";
-export const SAFETY_LINE = 3_000_000;
+export const SAFETY_LINE = 0;
 let aiConfig: AiProviderConfigPayload | null = null;
 
 export const PREDICTION_RULES: PredictionRuleSection[] = [
   {
-    title: "项目合同收款与预付款扣回",
+    title: "项目预测与公司预测",
     formula:
-      "进度累计目标＝累计产值×进度比例＋未扣预付款；本期回款＝max(0,累计目标－此前累计已收)，总收款封顶合同额",
+      "项目期末存贷差＝项目期初存贷差＋项目收款－项目合同应付；公司期末余额＝账户期初可用资金＋公司计入收款－全部项目合同应付",
     variables: [
-      "竣工、结算、质保金分别按合同额×累计支付比例补差，质保金最后累计至100%。各比例不是独立相加。",
-      "累计产值达到合同额×门槛后，当期开始扣回；每期扣回＝min(剩余预付款,当期应收进度款,设定基数×扣回比例)。基数可选当期产值或应收进度款。",
-      "历史实收含预付款。历史金额已在期初余额内，不重复作为未来收入。期初进度欠款暂置基准日并提示人工确认。",
+      "项目存贷差是归属账，不是银行余额，不能再叠加到公司期初。",
+      "公司收款要求指定已分类账户；项目自身合同应收不因账户未分类而消失，未分类收款在公司核对表单列。",
     ],
     rules: [
-      "单个项目可以从原逐笔收支切换到合同预测；原记录保留但不与生成明细重复计入。停用合同预测可恢复原口径。",
-      "剩余产值可按均匀或S形曲线分配，也可逐月录入或CSV导入。未来产值加期初产值须等于合同额。",
-      "本版采用合同额作为最终结算基数，未单列签证变更、税金与动态结算调整。",
+      "公司合并要求启用合同计划的项目基准日一致，不将不同日期的期初状态混用。",
+      "预测默认从已填报基准日开始；重开网页不会自行把历史回款提前到今天。",
     ],
   },
   {
-    title: "分包付款与公司统筹",
-    formula: "综合权重＝项目重要系数×分包优先系数×(10000＋规则分×100)",
-    variables: [
-      "项目和分包系数均为1至5。刚性付款使用单独的高惩罚权重10亿；这是政策权重，不是概率或严格词典序最优保证。",
-      "简易模式：剩余估算金额在进场至完工期间均匀分配后加账期。详细模式：按均匀分包产值乘进度比例，再按完工、结算、质保累计目标补差。",
-    ],
-    rules: [
-      "已付金额扣除；付款资料未齐时不安排，但义务仍保留。是否拆分及可延期天数须按合同填写。",
-      "混合整数规划在最多90天、100笔到期义务内限时求解。每个账户每天不可透支，专户用途不可突破。",
-      "付款后公司余额按实际建议分配重算；未覆盖义务另列，不能因为延后支付就认定风险消失。",
-    ],
-  },
-  {
-    title: "项目存贷差与垫资边界",
+    title: "累计收款与预付款",
     formula:
-      "项目存贷差＝期初历史净收支＋累计未来到账－累计安排付款；允许期内≥－垫资峰值，其他日期≥0",
+      "累计进度目标＝累计产值×进度比例＋未扣预付款；新增回款＝max(0,累计目标－此前累计已收)",
     variables: [
-      "一般资金可跨项目统筹；项目存贷差是归属账，不是第二份银行余额。不得叠加到公司期初资金。",
-      "垫资开始日与截止日均包含在允许期间，截止日次日起须回正。约束逐日检查，不只看月末。",
+      "竣工、结算、质保均按累计支付目标补差，不把80%、90%、97%独立相加。",
+      "累计产值达到设定门槛后，当期按设置比例扣回预付款，直至扣清；不超过未扣余额和当期可扣进度款。",
     ],
     rules: [
-      "即使公司资金充足也不能突破项目额度；期初垫资无法在期限内回正时报告无可行方案。",
-      "合同基准展示全部到期义务导致的负余额及风险，统筹方案只展示通过约束的安排。",
-      "项目基准日与今日不一致时，需更新累计实收、产值、已付和存贷差后再统筹付款。",
+      "历史实收只作为期初状态，未来收款不重复计入。",
+      "只有超过合同应收日的待收才是逾期；未到期尾款不是当前欠款。",
+      "剩余产值支持手工逐月、均匀分配与S形曲线，均为计划，不是机器学习预测。",
     ],
   },
   {
-    title: "1. 预测起点与安全线",
-    formula: "A₀ = Σ 已分类账户可用余额；一般资金安全线 S = 3,000,000 元",
+    title: "分包付款",
+    formula: "详细模式按累计目标补差；简易模式按剩余估算额与剩余期间分配",
     variables: [
-      "账户分为一般资金、工资专户、项目专户、未分类；工资和项目专户只覆盖对应用途。未分类余额不计入可调度资金。",
-      "S：首页和常规预测默认安全线为300万元，情景推演可单独调整。账户总余额和冻结金额不直接进入预测。",
+      "付款由分包进场、完工、账期和各阶段累计比例生成。",
+      "项目重要系数与分包优先系数各为1至5。",
     ],
-    rules: ["预测只使用人工录入的账户可用余额，不调用银行或ERP接口。"],
+    rules: [
+      "资料未齐不删除义务，但统筹时不安排。",
+      "本期预测只计本期到期义务，未来全部合同尾款不直接用于判定当前高风险。",
+    ],
   },
   {
-    title: "2. 回款规则评分（辅助风险提示）",
+    title: "公司付款统筹",
     formula:
-      "P = clamp(50 + 阶段分 + 开票分 + 业主/账龄分 + 历史延期分 + 账龄风险分, 0, 100)",
+      "非刚性未付惩罚＝10000×项目重要系数×分包优先系数×(1＋min(逾期天数,90)÷30)",
     variables: [
-      "P：回款规则分 ai_probability，取值0至100；未经历史样本校准，不代表真实到账概率。",
-      "规则评分不再折减回款金额。现金流按节点日期、分期比例、质保金释放日期和情景延迟生成实际收款事件。",
+      "刚性义务使用10亿高惩罚，优先保障但不突破现金和用途约束。",
+      "不再按旧版AI分数给出立即支付、部分支付等指令；只有优化生成的金额经过约束。",
     ],
     rules: [
-      "回款阶段：付款节点已达成 +20；已确权 +16；审计中 +6；未到节点 -12。",
-      "开票状态：已开票 +14；部分开票 +5；未开票 -12。",
-      "业主与账龄：政府单位/平台公司账龄>60天 -10；民营业主账龄>30天 -8。",
-      "历史延期：>45天 -18；>30天 -12；>15天 -6。",
-      "账龄风险：>90天 -24并标红；>60天 -15并标红；>30天 -8并标黄。",
-      "最终评分限制在0至100；评分<45标红，45至<70标黄，其余标绿（已触发红色账龄的除外）。",
+      "账户不得透支，工资和项目专户不得挪用；考虑整笔、最低分期、资料和付款窗口。",
+      "最多90天、100笔到期义务限时求解；可行不等于全局最优。",
+      "未安排款项保留，安排后余额改善不等于盈利或免除债务；最终须人工审批。",
     ],
   },
   {
-    title: "3. 付款优先级评分与建议",
+    title: "垫资边界",
+    formula: "允许垫资期间：项目存贷差≥－额度；期限外：项目存贷差≥0",
+    variables: [
+      "单项目预测显示合同按期全付下的垫资峰值和首次超限日期。",
+      "公司统筹显示建议付款后的项目存贷差，不得与合同基准结果混淆。",
+    ],
+    rules: [
+      "逐日检查，不只看月末；允许期间包含起止日，截止日次日起须回正。",
+      "公司有钱不等于项目可无限垫资，期初已超限也须明确提示。",
+    ],
+  },
+  {
+    title: "筹资需求与安全储备",
     formula:
-      "Q = clamp(45 + 类型分 + 标记分 + 到期分 + 付款比例分 + 附件分 + 资金影响分, 0, 100)",
+      "筹资需求＝max(0,－最低一般资金余额)；安全储备不足＝max(0,安全储备－最低一般资金余额)",
     variables: [
-      "Q：付款优先级 ai_score，取值0至100，按分数从高到低排序。",
-      "付款比例 r = (paid_amount + amount) ÷ (settled_amount 或 contract_amount 或 1)。",
-      "逾期天数 d = floor((今天 - due_date) ÷ 1天)。",
+      "安全储备为用户可选参数，默认0，不再隐含固定300万元。",
+      "安全储备不足已包含可能的筹资需求，两者不可相加。",
     ],
     rules: [
-      "付款类型：工资/农民工工资/税款 +34；劳务分包/材料款/机械租赁/专业分包等履约类 +18；其他 +5。",
-      "人工标记：刚性付款 +10；劳务或农民工工资 +8。",
-      "到期情况：逾期>30天 +18；>14天 +12；>0天 +8；未来7天内到期 +4。",
-      "本次付款后累计付款比例：r>95% -22；r>85% -14；r>75% -7。",
-      "附件状态：完整 +7；部分缺失 -12；缺失/待补充 -24。",
-      "付款后可用资金<0元 -32；低于安全线 -18；低于安全线1.2倍 -8。",
-      "建议阈值：Q≥85立即支付；70≤Q<85优先支付；55≤Q<70部分支付；40≤Q<55暂缓支付；Q<40不建议支付或退回补充资料。附件缺失且Q<55时优先退回补充资料。",
-    ],
-  },
-  {
-    title: "4. 项目风险等级",
-    formula:
-      "回款风险 = avg(P)；回款率 = collected_amount ÷ contract_amount；未付金额 = Σ payment.amount",
-    variables: [
-      "高回款风险：avg(P)<55 或 回款率<25%。中回款风险：avg(P)<72 或 回款率<45%。",
-      "高付款风险：未付金额>合同额10% 或 ai_score≥70的付款金额>合同额4%；中付款风险：未付金额>合同额5%。",
-    ],
-    rules: [
-      "项目任一维度为高风险，项目标红；任一维度为中风险且无高风险，项目标黄；否则标绿。",
-      "数据不足时，回款明细平均可信度按100计算，但项目回款率和付款数据仍按实际录入值计算。",
-    ],
-  },
-  {
-    title: "5. 7/30/90天现金流滚动预测",
-    formula: "Bₜ = Bₜ₋₁ + Eₜ - Nₜ - Rₜ",
-    variables: [
-      "Bₜ：第t日期末可用余额；B₀=A₀。",
-      "Eₜ：当日已分类账户计划到账金额；Nₜ：当日非刚性未付义务；Rₜ：当日刚性未付义务。首页趋势展示一般资金余额，专户余额单列。",
-    ],
-    rules: [
-      "刚性付款：人工标记为刚性付款，或付款类型包含工资/税款的，按全额计入Rₜ。",
-      "所有非刚性付款义务全额进入合同基准。逾期未付款结转首日。付款安排使用混合整数规划，未覆盖金额单列，不从义务中删除。",
-      "系统按日滚动，最长生成90天；7天、30天和90天缺口均取对应期间的最低期末余额计算。",
-    ],
-  },
-  {
-    title: "6. 资金缺口与现金流风险",
-    formula: "Gₙ = max(0, S - min(一般资金余额₁…一般资金余额ₙ))",
-    variables: [
-      "Gₙ：未来n天资金缺口，n取7、30或90。",
-      "现金流风险：刚性付款无法由符合用途的资金覆盖，标记重大风险；否则一般资金余额<S标红，<1.25S标黄，其余标绿。",
-    ],
-    rules: [
-      "缺口为0表示预测期间内最低期末余额仍不低于安全线，不代表可以忽略刚性付款和数据录入质量。",
-      "本导出文件只包含当前站点实际运行的资金、回款、付款和风险规则；利润/EAC模型尚未纳入本版本的现金流计算。",
+      "公司合计余额包含已分类专户，一般资金单列；专户有钱仍可能不能支付其他用途。",
+      "情景查看范围决定图表是公司还是单项目；压力影响项目仅决定对谁施加延迟或涨价，不改变公司汇总范围。",
+      "外部AI接口保留关闭，核心预测、优化和说明均在本地执行。",
     ],
   },
 ];
@@ -980,202 +937,26 @@ function mutate<T>(fn: (store: LocalStore) => T): T {
   return result;
 }
 
-function collectionScore(
-  project: Project,
-  item: ExpectedCollection,
-): { score: number; risk: RiskLevel; reasons: string[] } {
-  let score = 50;
-  const reasons: string[] = [];
-  score +=
-    (
-      { 付款节点已达成: 20, 已确权: 16, 审计中: 6, 未到节点: -12 } as Record<
-        string,
-        number
-      >
-    )[item.collection_stage] ?? 0;
-  score +=
-    ({ 已开票: 14, 部分开票: 5, 未开票: -12 } as Record<string, number>)[
-      item.invoice_status
-    ] ?? 0;
-  if (["付款节点已达成", "已确权"].includes(item.collection_stage))
-    reasons.push("已确权或达到合同付款节点");
-  if (item.invoice_status === "已开票") reasons.push("已完成开票");
-  else reasons.push("开票资料仍需跟进");
-  if (
-    ["政府单位", "平台公司"].includes(project.owner_type) &&
-    item.aging_days > 60
-  ) {
-    score -= 10;
-    reasons.push("政府或平台项目账龄较长");
-  }
-  if (project.owner_type === "民营业主" && item.aging_days > 30) {
-    score -= 8;
-    reasons.push("民营业主账龄偏长");
-  }
-  if (item.historical_delay_days > 45) {
-    score -= 18;
-    reasons.push("历史延期超过45天");
-  } else if (item.historical_delay_days > 30) score -= 12;
-  else if (item.historical_delay_days > 15) score -= 6;
-  let risk: RiskLevel = "绿色";
-  if (item.aging_days > 90) {
-    score -= 24;
-    risk = "红色";
-  } else if (item.aging_days > 60) {
-    score -= 15;
-    risk = "红色";
-  } else if (item.aging_days > 30) {
-    score -= 8;
-    risk = "黄色";
-  }
-  score = Math.max(0, Math.min(100, round(score)));
-  if (score < 45) risk = "红色";
-  else if (score < 70 && risk !== "红色") risk = "黄色";
-  return { score, risk, reasons };
-}
-function paymentScore(
-  item: PaymentRequest,
-  available: number,
-): { score: number; suggestion: string; reasons: string[] } {
-  let score = 45;
-  const reasons: string[] = [];
-  const rigid = ["工资", "农民工工资", "税款"];
-  const site = [
-    "劳务分包",
-    "材料款",
-    "机械租赁",
-    "专业分包",
-    "钢筋材料款",
-    "混凝土材料款",
-  ];
-  if (rigid.some((x) => item.payment_type.includes(x))) {
-    score += 34;
-    reasons.push("涉及工资、农民工工资或税款等刚性支付");
-  } else if (site.some((x) => item.payment_type.includes(x))) {
-    score += 18;
-    reasons.push("影响项目现场履约或供应链稳定");
-  } else {
-    score += 5;
-    reasons.push("一般项目资金支付事项");
-  }
-  if (bool(item.is_rigid_payment)) {
-    score += 10;
-    reasons.push("被标记为刚性付款");
-  }
-  if (bool(item.is_labor_payment)) {
-    score += 8;
-    reasons.push("涉及劳务或农民工工资实名制支付");
-  }
-  const overdue = Math.floor(
-    (Date.parse(today()) - Date.parse(item.due_date)) / 86400000,
-  );
-  if (overdue > 30) {
-    score += 18;
-    reasons.push("已逾期超过30天");
-  } else if (overdue > 14) {
-    score += 12;
-    reasons.push("已逾期超过14天");
-  } else if (overdue > 0) {
-    score += 8;
-    reasons.push("付款已逾期");
-  } else if (overdue >= -7) {
-    score += 4;
-    reasons.push("7天内到期");
-  }
-  const ratio =
-    (item.paid_amount + item.amount) /
-    (item.settled_amount || item.contract_amount || 1);
-  if (ratio > 0.95) {
-    score -= 22;
-    reasons.push("本次支付后累计付款比例超过95%");
-  } else if (ratio > 0.85) {
-    score -= 14;
-    reasons.push("本次支付后累计付款比例偏高");
-  } else if (ratio > 0.75) {
-    score -= 7;
-    reasons.push("需关注分包累计付款比例");
-  }
-  if (item.attachment_status === "完整") {
-    score += 7;
-    reasons.push("合同、结算、发票等附件完整");
-  } else if (item.attachment_status === "部分缺失") {
-    score -= 12;
-    reasons.push("附件部分缺失");
-  } else {
-    score -= 24;
-    reasons.push("附件缺失或待补充");
-  }
-  if (available - item.amount < 0) {
-    score -= 32;
-    reasons.push("本次付款后账户资金为负");
-  } else if (available - item.amount < SAFETY_LINE) {
-    score -= 18;
-    reasons.push("本次付款后资金余额低于安全线");
-  } else if (available - item.amount < SAFETY_LINE * 1.2) score -= 8;
-  score = Math.max(0, Math.min(100, round(score)));
-  let suggestion = "不建议支付或退回补充资料";
-  if (["缺失", "待补充"].includes(item.attachment_status) && score < 55)
-    suggestion = "退回补充资料";
-  else if (score >= 85) suggestion = "立即支付";
-  else if (score >= 70) suggestion = "优先支付";
-  else if (score >= 55) suggestion = "部分支付";
-  else if (score >= 40) suggestion = "暂缓支付";
-  return { score, suggestion, reasons };
-}
-
 function recalculateStore(store: LocalStore): void {
-  const available = store.accounts.reduce(
-    (sum, item) => sum + num(item.available_balance),
-    0,
-  );
-  const projectMap = new Map(store.projects.map((item) => [item.id, item]));
+  // Compatibility fields remain readable in older backups, but are not predictive probabilities.
   for (const item of store.collections) {
-    const project = projectMap.get(item.project_id);
-    if (!project) continue;
-    const scored = collectionScore(project, item);
-    item.ai_probability = scored.score;
-    item.risk_level = scored.risk;
+    item.ai_probability = 0;
+    item.risk_level =
+      item.aging_days > 60 ? "红色" : item.aging_days > 0 ? "黄色" : "绿色";
   }
   for (const item of store.payments) {
-    const scored = paymentScore(item, available);
-    item.ai_score = scored.score;
-    item.suggestion = scored.suggestion;
+    item.ai_score = 0;
+    item.suggestion =
+      item.attachment_status === "完整" ? "待公司统筹校验" : "待补充资料";
   }
   for (const project of store.projects) {
-    const collections = store.collections.filter(
-      (item) => item.project_id === project.id,
-    );
-    const payments = store.payments.filter(
-      (item) => item.project_id === project.id,
-    );
-    const avg = collections.length
-      ? collections.reduce((s, item) => s + item.ai_probability, 0) /
-        collections.length
-      : 100;
-    const unpaid = payments.reduce((s, item) => s + item.amount, 0);
-    const highAmount = payments
-      .filter((item) => item.ai_score >= 70)
-      .reduce((s, item) => s + item.amount, 0);
-    const rate = project.contract_amount
-      ? project.collected_amount / project.contract_amount
-      : 0;
-    const contractual = project.plan?.enabled
+    const status = project.plan?.enabled
       ? projectReceiptStatus(project.contract_amount, project.plan)
       : null;
-    const collectionHigh = contractual
-      ? contractual.overdueDays > 60
-      : avg < 55 || rate < 0.25;
-    const collectionMedium = contractual
-      ? contractual.outstanding > 0
-      : avg < 72 || rate < 0.45;
-    const paymentHigh =
-      unpaid > project.contract_amount * 0.1 ||
-      highAmount > project.contract_amount * 0.04;
-    const paymentMedium = unpaid > project.contract_amount * 0.05;
     project.risk_level =
-      collectionHigh || paymentHigh
+      status && status.overdueDays > 60
         ? "红色"
-        : collectionMedium || paymentMedium
+        : status && status.outstanding > 0
           ? "黄色"
           : "绿色";
   }
@@ -1246,17 +1027,15 @@ function formatWanText(value: number): string {
 }
 
 function priorities(store: LocalStore): PaymentPriority[] {
-  const available = store.accounts.reduce(
-    (s, item) => s + item.available_balance,
-    0,
-  );
-  const projects = new Map(store.projects.map((item) => [item.id, item]));
+  const start = forecastBasis(store, { kind: "company" });
+  const projects = new Map(store.projects.map((p) => [p.id, p]));
   return store.payments
     .map((item) => {
-      const score = paymentScore(item, available);
-      const weight = item.priority_weight ?? 1;
-      const rigid =
-        item.is_rigid_payment || /工资|税款/.test(item.payment_type);
+      const reasons = [
+        `项目与分包综合系数${item.priority_weight ?? 1}`,
+        isRigid(item) ? "刚性付款优先保障" : "按合同到期日纳入统筹",
+        "排序不等于可执行付款，须通过资金与垫资约束",
+      ];
       return {
         id: item.id,
         project_name: projects.get(item.project_id)?.project_name ?? "未知项目",
@@ -1267,14 +1046,13 @@ function priorities(store: LocalStore): PaymentPriority[] {
         paid_ratio: item.settled_amount
           ? round(item.paid_amount / item.settled_amount)
           : 0,
-        ai_score: score.score,
-        priority_weight: weight,
-        weighted_score: rigid
-          ? 1000000000
-          : (10000 + score.score * 100) * weight,
-        suggestion: score.suggestion,
-        risk_reason: score.reasons.slice(0, 3).join("；"),
-        risk_reasons: score.reasons,
+        ai_score: 0,
+        priority_weight: item.priority_weight ?? 1,
+        weighted_score: paymentPriorityCost(item, start),
+        suggestion:
+          item.attachment_status === "完整" ? "待公司统筹校验" : "待补充资料",
+        risk_reason: reasons.join("；"),
+        risk_reasons: reasons,
       };
     })
     .sort(
@@ -1284,7 +1062,13 @@ function priorities(store: LocalStore): PaymentPriority[] {
     );
 }
 function forecasts(store: LocalStore, days: number): CashflowForecast[] {
-  const rows = simulate(store, SCENARIOS[0], days, SAFETY_LINE).days;
+  const rows = simulate(
+    store,
+    SCENARIOS[0],
+    days,
+    SAFETY_LINE,
+    forecastBasis(store, { kind: "company" }),
+  ).days;
   return rows;
 }
 function gap(rows: CashflowForecast[]): number {
@@ -1345,108 +1129,73 @@ function dashboard(store: LocalStore): DashboardSummary {
   };
 }
 function projectRisks(store: LocalStore): ProjectRisk[] {
-  const paymentRows = priorities(store);
-  const scoreMap = new Map(paymentRows.map((item) => [item.id, item]));
-  return store.projects
-    .map((project): ProjectRisk => {
-      const collections = store.collections.filter(
-        (item) => item.project_id === project.id,
-      );
-      const payments = store.payments.filter(
-        (item) => item.project_id === project.id,
-      );
-      const avg = collections.length
-        ? collections.reduce((s, item) => s + item.ai_probability, 0) /
-          collections.length
-        : 100;
-      const unpaid = payments.reduce((s, item) => s + item.amount, 0);
-      const highAmount = payments
-        .filter((item) => (scoreMap.get(item.id)?.ai_score ?? 0) >= 70)
-        .reduce((s, item) => s + item.amount, 0);
-      const contractual = project.plan?.enabled
-        ? projectReceiptStatus(project.contract_amount, project.plan)
-        : null;
-      const rate = contractual
-        ? contractual.rate
+  return store.projects.map((project): ProjectRisk => {
+    const status = project.plan?.enabled
+      ? projectReceiptStatus(project.contract_amount, project.plan)
+      : null;
+    const view = project.plan?.enabled
+      ? forecastView(
+          store,
+          { kind: "project", projectId: project.id },
+          SCENARIOS[0],
+          90,
+        )
+      : null;
+    const collectionRisk = status
+      ? status.overdueDays > 60
+        ? "高"
+        : status.outstanding > 0
+          ? "中"
+          : "低"
+      : "中";
+    const paymentRisk = view
+      ? view.breachDate
+        ? "高"
+        : view.peakAdvance > 0
+          ? "中"
+          : "低"
+      : "中";
+    const hint = status
+      ? status.outstanding > 0
+        ? `截至项目基准日进度款待收${formatWanText(status.outstanding)}；${status.overdueDays > 0 ? `逾期${status.overdueDays}天，需催收` : "未确认逾期，需核实合同应收日"}。预计补收日仅为预测假设。`
+        : "截至项目基准日应收进度款已收齐或暂无应收；未到期尾款不作为欠款。"
+      : "请完善项目合同与应收日期，旧逐笔数据不足以判断进度回款是否收齐。";
+    return {
+      ...project,
+      collection_rate: status
+        ? round(status.rate)
         : project.contract_amount
-          ? project.collected_amount / project.contract_amount
-          : 0;
-      const collectionRisk = contractual
-        ? contractual.overdueDays > 60
-          ? "高"
-          : contractual.outstanding > 0
-            ? "中"
-            : "低"
-        : avg < 55 || rate < 0.25
-          ? "高"
-          : avg < 72 || rate < 0.45
-            ? "中"
-            : "低";
-      const paymentRisk =
-        unpaid > project.contract_amount * 0.1 ||
-        highAmount > project.contract_amount * 0.04
-          ? "高"
-          : unpaid > project.contract_amount * 0.05
-            ? "中"
-            : "低";
-      const risk: RiskLevel =
+          ? round(project.collected_amount / project.contract_amount)
+          : 0,
+      outstanding_amount: status?.outstanding,
+      overdue_amount: status?.overdueAmount,
+      overdue_days: status?.overdueDays,
+      collection_basis: status
+        ? "基准日进度应收兑现率(含未扣预付款)"
+        : "累计实收占合同额(待完善合同)",
+      risk_level:
         collectionRisk === "高" || paymentRisk === "高"
           ? "红色"
           : collectionRisk === "中" || paymentRisk === "中"
             ? "黄色"
-            : "绿色";
-      const hint = contractual
-        ? contractual.outstanding > 0
-          ? `截至项目基准日进度款待收${formatWanText(contractual.outstanding)}；${contractual.overdueDays > 0 ? `逾期${contractual.overdueDays}天，需催收` : "未确认逾期，需核实合同应收日"}。预计补收日${project.plan!.opening_receivable_date || project.plan!.as_of}仅为预测假设。`
-          : `${contractual.expected > 0 ? "截至项目基准日，按进度比例及预付款扣回口径应收款已收齐" : "截至项目基准日暂无应收进度款"}；未到期尾款不作为欠款。付款压力另行评估。`
-        : risk === "红色"
-          ? `项目资金承压，已开票未回款${formatWanText(Math.max(0, project.billed_amount - project.collected_amount))}，需强化催收并控制付款节奏。`
-          : risk === "黄色"
-            ? "项目回款或付款节奏存在波动，建议纳入周资金调度清单。"
-            : "项目资金状态相对稳定，按合同节点持续跟踪回款。";
-      return {
-        ...project,
-        collection_rate: round(rate),
-        outstanding_amount: contractual?.outstanding,
-        overdue_amount: contractual?.overdueAmount,
-        overdue_days: contractual?.overdueDays,
-        collection_basis: contractual
-          ? "基准日进度应收兑现率(含未扣预付款)"
-          : "累计实收占合同额(旧逐笔模式)",
-        risk_level: risk,
-        collection_risk: collectionRisk,
-        payment_risk: paymentRisk,
-        ai_hint: hint,
-      };
-    })
-    .sort(
-      (a, b) =>
-        ({ 重大风险: -1, 红色: 0, 黄色: 1, 绿色: 2 })[a.risk_level] -
-        { 重大风险: -1, 红色: 0, 黄色: 1, 绿色: 2 }[b.risk_level],
-    );
+            : "绿色",
+      collection_risk: collectionRisk,
+      payment_risk: paymentRisk,
+      ai_hint:
+        hint +
+        (view?.breachDate
+          ? `未来90天合同付款预测于${view.breachDate}突破项目垫资限制，需在公司统筹中调整。`
+          : ""),
+    };
+  });
 }
 
 function localReport(store: LocalStore): AiReport {
   const summary = dashboard(store);
-  const paymentRows = priorities(store);
   const risks = projectRisks(store);
   const rows = forecasts(store, 30);
-  const immediate = paymentRows
-    .filter((item) => ["立即支付", "优先支付"].includes(item.suggestion))
-    .slice(0, 5);
-  const deferred = paymentRows
-    .filter((item) =>
-      ["暂缓支付", "退回补充资料", "不建议支付或退回补充资料"].includes(
-        item.suggestion,
-      ),
-    )
-    .slice(0, 5);
-  const sentence = (items: PaymentPriority[], prefix: string) =>
-    items.length
-      ? `${prefix}：${items.map((item) => `${item.project_name}向${item.payee_name}支付${item.payment_type}${formatWanText(item.amount)}`).join("；")}。`
-      : `${prefix}暂无。`;
   const min = Math.min(...rows.map((item) => item.general_balance));
-  let report = `资金驾驶舱分析报告（本地引擎）\n\n一、当前资金总体情况\n当前可用资金${formatWanText(summary.current_available_funds)}，安全线${formatWanText(SAFETY_LINE)}，未来30天最低一般资金余额${formatWanText(min)}，待审批付款${formatWanText(summary.pending_payment_amount)}。\n\n二、资金缺口\n未来7天缺口${formatWanText(summary.gap_7d)}，未来30天缺口${formatWanText(summary.gap_30d)}，未来90天缺口${formatWanText(summary.gap_90d)}。\n\n三、付款安排\n${sentence(immediate, "建议优先安排")}\n${sentence(deferred, "建议暂缓或补充资料")}\n\n四、重点催收\n${
+  let report = `资金驾驶舱分析报告（本地引擎）\n\n一、当前资金总体情况\n当前可用资金${formatWanText(summary.current_available_funds)}，安全线${formatWanText(SAFETY_LINE)}，未来30天最低一般资金余额${formatWanText(min)}，剩余全周期合同应付${formatWanText(summary.pending_payment_amount)}。\n\n二、资金缺口\n未来7天缺口${formatWanText(summary.gap_7d)}，未来30天缺口${formatWanText(summary.gap_30d)}，未来90天缺口${formatWanText(summary.gap_90d)}。\n\n三、付款安排\n请在公司付款统筹中生成方案，按项目与分包权重、专户用途、资料完整性和项目垫资限制共同校验；本报告不直接给出支付指令。\n\n四、重点催收\n${
     risks
       .filter((item) => item.collection_risk !== "低")
       .map((item) => `${item.project_name}：${item.ai_hint}`)
@@ -1506,7 +1255,7 @@ export function predictionRulesMarkdown(): string {
     "",
     `导出时间：${generatedAt}`,
     "",
-    "本文件由浏览器本地规则引擎生成，内容对应当前站点实际执行的预测公式、评分加减分和风险阈值。系统的业务数据仍保存在当前浏览器中；导出规则不调用任何外部业务接口。",
+    "本文件由浏览器本地规则引擎生成，内容对应当前站点实际执行的预测公式、付款约束和口径边界。系统的业务数据仍保存在当前浏览器中；导出规则不调用任何外部业务接口。",
     "",
     sections,
     "## 规则使用边界",
@@ -1526,7 +1275,15 @@ export function exportPredictionRules(): void {
 }
 
 function simulationReport(store: LocalStore): string {
-  const comparisons = SCENARIOS.map((s) => simulate(store, s, 90, SAFETY_LINE));
+  const comparisons = SCENARIOS.map((s) =>
+    simulate(
+      store,
+      s,
+      90,
+      SAFETY_LINE,
+      forecastBasis(store, { kind: "company" }),
+    ),
+  );
   return (
     "\n\n六、非随机情景推演（90天）\n" +
     comparisons
@@ -1667,10 +1424,12 @@ export const api = {
     return store.projects.map((project) => ({
       ...project,
       collection_rate: project.plan?.enabled
-        ? round(projectReceiptStatus(project.contract_amount, project.plan).rate)
+        ? round(
+            projectReceiptStatus(project.contract_amount, project.plan).rate,
+          )
         : project.contract_amount
-        ? round(project.collected_amount / project.contract_amount)
-        : 0,
+          ? round(project.collected_amount / project.contract_amount)
+          : 0,
       expected_collection_count: store.collections.filter(
         (item) => item.project_id === project.id,
       ).length,

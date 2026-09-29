@@ -257,7 +257,7 @@ export default function ProjectWorkbench() {
       <PageHeader
         eyebrow="PROJECT WORKSPACE / 项目资金计划"
         title="从每一个项目，看清资金全局"
-        description="先确定项目产值与合同收支，再将分包付款纳入公司统筹。每一笔预测都有依据，每一次垫资都有边界。"
+        description="每个项目独立维护业主收款、产值和分包付款；项目预测看存贷差，公司预测看银行资金，二者不混算。"
         actions={
           <Space>
             <Button
@@ -275,7 +275,7 @@ export default function ProjectWorkbench() {
                   navigate("/company");
               }}
             >
-              公司总览 <ArrowRightOutlined />
+              公司收支预测 <ArrowRightOutlined />
             </Button>
           </Space>
         }
@@ -339,6 +339,7 @@ export default function ProjectWorkbench() {
                   </p>
                   <div className="project-tile-footer">
                     <span>重要系数 {p.plan?.importance || "待设置"}</span>
+                    {p.plan?.enabled && <Button onClick={() => navigate(`/project/${p.id}/forecast`)}>项目预测</Button>}
                     <Button type="text" onClick={() => select(p.id)}>
                       进入项目 <ArrowRightOutlined />
                     </Button>
@@ -348,7 +349,7 @@ export default function ProjectWorkbench() {
             ))}
           </Row>
           {!data.projects.length && (
-            <Empty description="请先新建项目或从数据与设置批量导入" />
+            <Empty description="请先新建项目或从账户与导入批量导入" />
           )}
         </>
       )}
@@ -803,7 +804,7 @@ export default function ProjectWorkbench() {
                         </Row>
                         <Card
                           className="page-section"
-                          title="全生命周期月度收支（合同基准）"
+                          title="剩余全周期月度收支（当前项目草稿）"
                         >
                           <Chart
                             style={{ height: 360 }}
@@ -846,9 +847,10 @@ export default function ProjectWorkbench() {
                             }}
                           />
                           <Typography.Text type="secondary">
-                            月末存贷差不代表月内最低值。逐日垫资约束在情景推演与统筹付款中复核。
+                            这是当前草稿从基准日至尾款收清的剩余全周期，不是未来30/90天的公司测算。月末存贷差不代表月内最低值。
                           </Typography.Text>
                         </Card>
+                        <Space className="page-section"><Button type="primary" disabled={dirty || !project?.plan?.enabled} onClick={() => navigate(`/project/${project!.id}/forecast`)}>查看已保存项目的逐日预测</Button><span>{dirty ? '请先保存草稿' : '独立项目范围，核对每日垫资额度与期限'}</span></Space>
                         <Card title="逐笔合同收支">
                           <Table
                             rowKey={(_, i) => String(i)}
